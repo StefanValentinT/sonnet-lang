@@ -2,7 +2,7 @@ fun main() I32 {
     let a: I32 = 10;
     let b: I32 = 0;
     let x: I32 = a / b;
-    return x;
+    return 0;
 }
 
 #[

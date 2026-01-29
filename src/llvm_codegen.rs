@@ -285,15 +285,31 @@ fn emit_instr(
                     if ty == "double" {
                         format!("fdiv double {}, {}", a, b)
                     } else {
-                        let trap_check = fresh_reg(reg_counter);
-                        let cont_label = format!("div_cont{}", reg_counter);
-                        let trap_ir = format!(
-                            "  {} = icmp eq {} {}, 0\n  br i1 {}, label %div_zero, label %{}\ndiv_zero:\n  call void @llvm.trap()\n  unreachable\n{}:\n",
-                            trap_check, ty, b, trap_check, cont_label, cont_label
+                        let check = fresh_reg(reg_counter);
+                        let ok_label = format!("div_ok{}", reg_counter);
+                        let zero_label = format!("div_zero{}", reg_counter);
+
+                        return format!(
+                            "{}{}  {} = icmp eq {} {}, 0\n  br i1 {}, label %{}, label %{}\n{}:\n  call void @llvm.trap()\n  unreachable\n{}:\n  {} = sdiv {} {}, {}\n  store {} {}, {}* %{}\n",
+                            a_load,
+                            b_load,
+                            check,
+                            ty,
+                            b,
+                            check,
+                            zero_label,
+                            ok_label,
+                            zero_label,
+                            ok_label,
+                            r,
+                            ty,
+                            a,
+                            b,
+                            ty,
+                            r,
+                            ty,
+                            var_name(dest),
                         );
-                        let ir = format!("sdiv {} {}, {}", ty, a, b);
-                        let full = format!("{}{}  {}\n{}", a_load, b_load, ir, trap_ir);
-                        return full;
                     }
                 }
                 TacBinaryOp::Remainder => {

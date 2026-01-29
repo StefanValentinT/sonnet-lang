@@ -53,7 +53,7 @@ struct Args {
     validate: bool,
 
     #[arg(short)]
-    c: bool,
+    e: bool,
 
     #[arg(short, long)]
     verbose: bool,
@@ -130,8 +130,19 @@ async fn main() {
     unsafe {
         VERBOSE = args.verbose;
     }
-
-    vprintln!("{}", DEV_BUILD);
+    println!(
+        r#"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~                                    ~
+~  _   _           _   _             ~
+~ | | | |   __ _  (_) | | __  _   _  ~
+~ | |_| |  / _` | | | | |/ / | | | | ~
+~ |  _  | | (_| | | | |   <  | |_| | ~
+~ |_| |_|  \__,_| |_| |_|\_\  \__,_| ~
+~                                    ~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"#
+    );
+    println!("{}", DEV_BUILD);
 
     if args.lsp {
         lsp::run_language_server().await;
@@ -188,9 +199,9 @@ async fn main() {
         return;
     }
 
-    let output_file = compile_ir(&filename, &llvm_ir, args.c);
+    let output_file = compile_ir(&filename, &llvm_ir, false);
 
-    if !args.c {
+    if args.e {
         vprintln!("Running executable...");
         let output = std::process::Command::new(&output_file)
             .output()

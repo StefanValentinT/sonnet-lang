@@ -1,5 +1,6 @@
 cofun f() I32 {
-    return 42;
+    let x: I32 = 21*2;
+    return x;
 }
 
 fun main() I32 {

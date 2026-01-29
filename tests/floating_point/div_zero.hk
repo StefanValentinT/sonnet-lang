@@ -1,6 +1,6 @@
 fun main() I32 {
     let x: I32 = 10 / 0;
-    return x;
+    return 42;
 }
 
 #[

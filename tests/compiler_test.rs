@@ -1,4 +1,3 @@
-use assert_cmd::cargo;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tabled::{Table, Tabled};
@@ -76,16 +75,46 @@ fn classify_test(contents: &str) -> TestKind {
         }
     }
 }
+fn is_failure(res: &CompilerResult) -> bool {
+    !res.success || res.exit_code.map_or(false, |c| c != 0) || res.signal.is_some()
+}
 
-fn run_compiler(path: &Path) -> CompilerResult {
-    let mut cmd = cargo::cargo_bin_cmd!("haiku");
-    let abs = path.canonicalize().expect("Failed to canonicalize path");
-    let output = cmd.arg(&abs).output().expect("Failed to run compiler");
+fn run_haiku(path: &Path) -> CompilerResult {
+    let abs = path.canonicalize().unwrap();
+
+    let output = std::process::Command::new("haiku")
+        .arg(&abs)
+        .output()
+        .expect("failed to run haiku");
+
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
 
     CompilerResult {
-        stdout: String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        success: output.status.success(),
+        exit_code: output.status.code(),
+        signal: cfg!(unix).then(|| output.status.signal()).flatten(),
+    }
+}
+
+fn run_executable(hk_file: &Path) -> CompilerResult {
+    let exe = hk_file
+        .parent()
+        .unwrap()
+        .join("build")
+        .join(hk_file.file_stem().unwrap());
+
+    let output = std::process::Command::new(&exe)
+        .output()
+        .expect("failed to run compiled executable");
+
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+
+    CompilerResult {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         success: output.status.success(),
         exit_code: output.status.code(),
@@ -141,23 +170,39 @@ fn compiler_tests() {
             continue;
         }
 
-        let result = run_compiler(&path);
+        let compile = run_haiku(&path);
+        let mut exec_result: Option<CompilerResult> = None;
 
         let (ty, expected, actual, passed) = match &test_kind {
             TestKind::Fail => {
-                let actual = if let Some(sig) = result.signal {
-                    format!("signal {}", sig)
-                } else if let Some(code) = result.exit_code {
-                    format!("exit {}", code)
+                let mut failed = is_failure(&compile);
+
+                let actual = if failed {
+                    if let Some(sig) = compile.signal {
+                        format!("signal {}", sig)
+                    } else if let Some(code) = compile.exit_code {
+                        format!("exit {}", code)
+                    } else {
+                        "non-zero".to_string()
+                    }
                 } else {
-                    "<no result>".to_string()
+                    let exec = run_executable(&path);
+                    failed = is_failure(&exec);
+
+                    if let Some(sig) = exec.signal {
+                        format!("signal {}", sig)
+                    } else if let Some(code) = exec.exit_code {
+                        format!("exit {}", code)
+                    } else {
+                        "non-zero".to_string()
+                    }
                 };
 
                 (
                     "Fail".to_string(),
-                    "failure".to_string(),
-                    actual.clone(),
-                    !result.success,
+                    "non-zero exit".to_string(),
+                    actual,
+                    failed,
                 )
             }
 
@@ -165,36 +210,51 @@ fn compiler_tests() {
                 expect_out,
                 expect_ret,
             } => {
-                let mut ok = true;
-                let mut exp = String::new();
-                let mut act = String::new();
+                if !compile.success {
+                    (
+                        "Expect".to_string(),
+                        "compiler success".to_string(),
+                        "compiler failed".to_string(),
+                        false,
+                    )
+                } else {
+                    let exec = run_executable(&path);
+                    exec_result = Some(CompilerResult {
+                        stdout: exec.stdout.clone(),
+                        stderr: exec.stderr.clone(),
+                        success: exec.success,
+                        exit_code: exec.exit_code,
+                        signal: exec.signal,
+                    });
 
-                if let Some(out) = expect_out {
-                    exp.push_str(&format!("out: {}", out));
-                    act.push_str(&format!("out: {}", result.stdout.trim_end()));
-                    ok &= result.stdout.trim_end() == out;
-                }
+                    let mut ok = true;
+                    let mut exp = String::new();
+                    let mut act = String::new();
 
-                if let Some(ret) = expect_ret {
-                    let code = result
-                        .exit_code
-                        .map(|c| c.to_string())
-                        .unwrap_or("<signal>".into());
-                    if !exp.is_empty() {
-                        exp.push_str(", ");
-                        act.push_str(", ");
+                    if let Some(out) = expect_out {
+                        exp.push_str(&format!("out: {}", out));
+                        act.push_str(&format!("out: {}", exec.stdout.trim_end()));
+                        ok &= exec.stdout.trim_end() == out;
                     }
-                    exp.push_str(&format!("ret: {}", ret));
-                    act.push_str(&format!("ret: {}", code));
-                    ok &= code == *ret;
-                }
 
-                (
-                    "Expect".to_string(),
-                    exp,
-                    act,
-                    ok && result.stderr.is_empty(),
-                )
+                    if let Some(ret) = expect_ret {
+                        let code = exec
+                            .exit_code
+                            .map(|c| c.to_string())
+                            .unwrap_or("<signal>".into());
+
+                        if !exp.is_empty() {
+                            exp.push_str(", ");
+                            act.push_str(", ");
+                        }
+
+                        exp.push_str(&format!("ret: {}", ret));
+                        act.push_str(&format!("ret: {}", code));
+                        ok &= code == *ret;
+                    }
+
+                    ("Expect".to_string(), exp, act, ok && exec.stderr.is_empty())
+                }
             }
 
             TestKind::Skip => unreachable!(),
@@ -207,11 +267,16 @@ fn compiler_tests() {
             actual: pad_truncate(&actual, ACTUAL_COL_WIDTH),
             passed: pad_truncate(if passed { "✅" } else { "❌" }, PASSED_COL_WIDTH),
         });
-
         if !passed {
             eprintln!("==== Test failed: {} ====", path.display());
-            eprintln!("stdout:\n{}", result.stdout);
-            eprintln!("stderr:\n{}", result.stderr);
+
+            eprintln!("compiler stderr:\n{}", compile.stderr);
+
+            if let Some(exec) = &exec_result {
+                eprintln!("exec stdout:\n{}", exec.stdout);
+                eprintln!("exec stderr:\n{}", exec.stderr);
+            }
+
             panic!("Test failed");
         }
     }

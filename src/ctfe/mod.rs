@@ -95,7 +95,7 @@ pub fn perform_ctfe_pass(mut program: TypedProgram) -> Result<TypedProgram, Stri
 
             let result = parse_ctfe_result(&output, &fun.ret_type)?;
 
-            println!("CTFE result: {:#?}", result);
+            //println!("CTFE result: {:#?}", result);
 
             program.functions = program
                 .functions
