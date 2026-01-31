@@ -1,0 +1,64 @@
+cofun f_i32() I32 {
+    let a: I32 = (1 + 3) * 2 - 4;
+    let b: I32 = (a / 2) + 2;
+    return b;
+}
+
+cofun f_i64() I64 {
+    let x: I64 = (10_i64 - 6_i64) * 3_i64;
+    let y: I64 = x / 3_i64;
+    return y;
+}
+
+cofun f_f64() F64 {
+    let x: F64 = (1.0 + 1.0) * 4.0;
+    let y: F64 = x / 2.0;
+    return y;
+}
+
+cofun f_char() Char {
+    let x: I32 = 2 * 2;
+    let c: Char = x as Char;
+    return c;
+}
+
+cofun f_array() I32 {
+    let arr: [I32; 3] = [0, 0, 0];
+    arr[0] = 1;
+    arr[1] = 3;
+    arr[2] = arr[0] + arr[1];
+    return arr[2];
+}
+
+cofun f_pointer() I32 {
+    let x: I32 = 8;
+    let p: *I32 = &x;
+    *p = *p / 2;
+    return *p;
+}
+
+cofun f_unit_side_effect() I32 {
+    let x: I32 = 4;
+    {
+        x = 5;
+    }
+    return x;
+}
+
+fun main() I32 {
+    let a: I32 = f_i32();                 # 4
+    let b: I32 = f_i64() as I32;          # 4
+    let c: I32 = f_f64() as I32;          # 4
+    let d: I32 = f_char() as I32;         # 4
+    let e: I32 = f_array();               # 4
+    let f: I32 = f_pointer();             # 4
+    let g: I32 = f_unit_side_effect();    # 4
+
+    let sum: I32 =
+        a + b + c + d + e + f + g;
+
+    return sum;
+}
+#[
+<expect_ret> 42 </expect_ret>    
+]#

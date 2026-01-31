@@ -82,20 +82,20 @@ pub fn perform_ctfe_pass(mut program: TypedProgram) -> Result<TypedProgram, Stri
             functions.push(ctfe_main);
             let sub_program = TypedProgram { functions };
 
-            //println!("Constant Program: {:#?}", sub_program);
+            println!("Constant Program: {:#?}", sub_program);
             let tac_program = gen_tac(sub_program);
 
-            //println!("Constant Tac: {:#?}", tac_program);
+            println!("Constant Tac: {:#?}", tac_program);
             let mut llvm_program = emit_llvm(tac_program);
             llvm_program.push_str(&generate_serialization_helpers());
-            //println!("Constant LLVM: {}", llvm_program);
+            println!("Constant LLVM: {}", llvm_program);
             let output = execute_llvm_ir(&llvm_program)?;
 
-            //println!("CTFE output: {}", output);
+            println!("CTFE output: {}", output);
 
             let result = parse_ctfe_result(&output, &fun.ret_type)?;
 
-            //println!("CTFE result: {:#?}", result);
+            println!("CTFE result: {:#?}", result);
 
             program.functions = program
                 .functions
@@ -266,10 +266,53 @@ entry:
   ret void
 }
 
+define void @_ctfe_write_i64(i64 %v) {
+entry:
+  %b0 = trunc i64 %v to i8
+  %shift1 = lshr i64 %v, 8
+  %b1 = trunc i64 %shift1 to i8
+  %shift2 = lshr i64 %v, 16
+  %b2 = trunc i64 %shift2 to i8
+  %shift3 = lshr i64 %v, 24
+  %b3 = trunc i64 %shift3 to i8
+  %shift4 = lshr i64 %v, 32
+  %b4 = trunc i64 %shift4 to i8
+  %shift5 = lshr i64 %v, 40
+  %b5 = trunc i64 %shift5 to i8
+  %shift6 = lshr i64 %v, 48
+  %b6 = trunc i64 %shift6 to i8
+  %shift7 = lshr i64 %v, 56
+  %b7 = trunc i64 %shift7 to i8
+  call void @_ctfe_write_i8(i8 %b0)
+  call void @_ctfe_write_i8(i8 %b1)
+  call void @_ctfe_write_i8(i8 %b2)
+  call void @_ctfe_write_i8(i8 %b3)
+  call void @_ctfe_write_i8(i8 %b4)
+  call void @_ctfe_write_i8(i8 %b5)
+  call void @_ctfe_write_i8(i8 %b6)
+  call void @_ctfe_write_i8(i8 %b7)
+  ret void
+}
+
 define void @_ctfe_serialize_i32(i32 %v) {
 entry:
   call void @_ctfe_write_i8(i8 1)  ; TAG for I32
   call void @_ctfe_write_i32(i32 %v)
+  ret void
+}
+
+define void @_ctfe_serialize_i64(i64 %v) {
+entry:
+  call void @_ctfe_write_i8(i8 2)
+  call void @_ctfe_write_i64(i64 %v)
+  ret void
+}
+
+define void @_ctfe_serialize_f64(double %v) {
+entry:
+  call void @_ctfe_write_i8(i8 3)
+  %i = bitcast double %v to i64
+  call void @_ctfe_write_i64(i64 %i)
   ret void
 }
 
@@ -347,6 +390,7 @@ entry:
 "#
     .to_string()
 }
+
 pub fn decode_ctfe_heap(mut bytes: &[u8]) -> Result<TypedExpr, String> {
     fn read_u8(bytes: &mut &[u8]) -> Result<u8, String> {
         if bytes.is_empty() {
@@ -366,20 +410,52 @@ pub fn decode_ctfe_heap(mut bytes: &[u8]) -> Result<TypedExpr, String> {
         Ok(val)
     }
 
+    fn read_i64(bytes: &mut &[u8]) -> Result<i64, String> {
+        if bytes.len() < 8 {
+            return Err("Unexpected EOF".to_string());
+        }
+        let val = i64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        *bytes = &bytes[8..];
+        Ok(val)
+    }
+
     fn decode_value(bytes: &mut &[u8]) -> Result<TypedExpr, String> {
         let tag = read_u8(bytes)?;
         match tag {
-            1 => Ok(TypedExpr {
-                ty: Type::I32,
-                kind: TypedExprKind::Constant(Const::I32(read_i32(bytes)?)),
-            }),
-            4 => Ok(TypedExpr {
-                ty: Type::Char,
-                kind: TypedExprKind::Constant(Const::Char(
-                    std::char::from_u32(read_i32(bytes)? as u32).ok_or("Invalid char code")?,
-                )),
-            }),
+            1 => {
+                // I32
+                Ok(TypedExpr {
+                    ty: Type::I32,
+                    kind: TypedExprKind::Constant(Const::I32(read_i32(bytes)?)),
+                })
+            }
+            2 => {
+                // I64
+                Ok(TypedExpr {
+                    ty: Type::I64,
+                    kind: TypedExprKind::Constant(Const::I64(read_i64(bytes)?)),
+                })
+            }
+            3 => {
+                // F64
+                let bits = read_i64(bytes)?;
+                let float = f64::from_bits(bits as u64);
+                Ok(TypedExpr {
+                    ty: Type::F64,
+                    kind: TypedExprKind::Constant(Const::F64(float)),
+                })
+            }
+            4 => {
+                // Char
+                Ok(TypedExpr {
+                    ty: Type::Char,
+                    kind: TypedExprKind::Constant(Const::Char(
+                        std::char::from_u32(read_i32(bytes)? as u32).ok_or("Invalid char code")?,
+                    )),
+                })
+            }
             10 => {
+                // Array
                 let elem_tag = read_u8(bytes)?;
                 let len = read_i32(bytes)?;
                 let mut elems = Vec::new();
@@ -417,123 +493,135 @@ pub fn decode_ctfe_heap(mut bytes: &[u8]) -> Result<TypedExpr, String> {
 
     decode_value(&mut bytes)
 }
+
 fn make_ctfe_main(callee: &TypedFunDecl, ret_type: &Type) -> Result<TypedFunDecl, String> {
-    match ret_type {
+    let call_expr = TypedExpr {
+        ty: ret_type.clone(),
+        kind: TypedExprKind::FunctionCall {
+            name: callee.name.clone(),
+            args: vec![],
+        },
+    };
+
+    let (serialize_call, needs_var) = match ret_type {
+        Type::I32 => (
+            TypedExpr {
+                ty: Type::Unit,
+                kind: TypedExprKind::FunctionCall {
+                    name: "_ctfe_serialize_i32".to_string(),
+                    args: vec![call_expr],
+                },
+            },
+            false,
+        ),
+        Type::I64 => (
+            TypedExpr {
+                ty: Type::Unit,
+                kind: TypedExprKind::FunctionCall {
+                    name: "_ctfe_serialize_i64".to_string(),
+                    args: vec![call_expr],
+                },
+            },
+            false,
+        ),
+        Type::F64 => (
+            TypedExpr {
+                ty: Type::Unit,
+                kind: TypedExprKind::FunctionCall {
+                    name: "_ctfe_serialize_f64".to_string(),
+                    args: vec![call_expr],
+                },
+            },
+            false,
+        ),
+        Type::Char => (
+            TypedExpr {
+                ty: Type::Unit,
+                kind: TypedExprKind::FunctionCall {
+                    name: "_ctfe_serialize_char".to_string(),
+                    args: vec![call_expr],
+                },
+            },
+            false,
+        ),
         Type::Slice { element_type } => {
-            let mut body_items = vec![];
-
-            let call_expr = TypedExpr {
-                ty: ret_type.clone(),
-                kind: TypedExprKind::FunctionCall {
-                    name: callee.name.clone(),
-                    args: vec![],
-                },
-            };
-
-            let result_var = TypedVarDecl {
-                name: "_ctfe_result".to_string(),
-                init_expr: call_expr,
-                var_type: ret_type.clone(),
-            };
-            body_items.push(TypedBlockItem::D(TypedDecl::Variable(result_var)));
-
-            let serialize_expr = TypedExpr {
-                ty: Type::Unit,
-                kind: TypedExprKind::FunctionCall {
-                    name: "_ctfe_serialize_slice".to_string(),
-                    args: vec![
-                        TypedExpr {
-                            ty: Type::I32,
-                            kind: TypedExprKind::Constant(Const::I32(match **element_type {
-                                Type::I32 => 1,
-                                Type::Char => 4,
-                                _ => unimplemented!("Other slice element types not implemented"),
-                            })),
+            return Ok(TypedFunDecl {
+                name: "main".to_string(),
+                params: vec![],
+                ret_type: Type::I32,
+                body: Some(TypedBlock::Block(vec![
+                    TypedBlockItem::D(TypedDecl::Variable(TypedVarDecl {
+                        name: "_ctfe_result".to_string(),
+                        init_expr: call_expr,
+                        var_type: ret_type.clone(),
+                    })),
+                    TypedBlockItem::S(TypedStmt::Expr(TypedExpr {
+                        ty: Type::Unit,
+                        kind: TypedExprKind::FunctionCall {
+                            name: "_ctfe_serialize_slice".to_string(),
+                            args: vec![
+                                TypedExpr {
+                                    ty: Type::I32,
+                                    kind: TypedExprKind::Constant(Const::I32(
+                                        match **element_type {
+                                            Type::I32 => 1,
+                                            Type::Char => 4,
+                                            _ => {
+                                                return Err(format!(
+                                                    "Unsupported slice element type: {:?}",
+                                                    element_type
+                                                ));
+                                            }
+                                        },
+                                    )),
+                                },
+                                TypedExpr {
+                                    ty: ret_type.clone(),
+                                    kind: TypedExprKind::Var("_ctfe_result".to_string()),
+                                },
+                            ],
                         },
-                        TypedExpr {
-                            ty: ret_type.clone(),
-                            kind: TypedExprKind::Var("_ctfe_result".to_string()),
+                    })),
+                    TypedBlockItem::S(TypedStmt::Expr(TypedExpr {
+                        ty: Type::Unit,
+                        kind: TypedExprKind::FunctionCall {
+                            name: "_ctfe_flush_heap".to_string(),
+                            args: vec![],
                         },
-                    ],
-                },
-            };
-            body_items.push(TypedBlockItem::S(TypedStmt::Expr(serialize_expr)));
+                    })),
+                    TypedBlockItem::S(TypedStmt::Return(TypedExpr {
+                        ty: Type::I32,
+                        kind: TypedExprKind::Constant(Const::I32(0)),
+                    })),
+                ])),
+                exec_time: ExecTime::Runtime,
+            });
+        }
+        _ => return Err(format!("Unsupported CTFE return type: {:?}", ret_type)),
+    };
 
-            let flush_expr = TypedExpr {
-                ty: Type::Unit,
-                kind: TypedExprKind::FunctionCall {
-                    name: "_ctfe_flush_heap".to_string(),
-                    args: vec![],
-                },
-            };
-            body_items.push(TypedBlockItem::S(TypedStmt::Expr(flush_expr)));
+    let flush_expr = TypedExpr {
+        ty: Type::Unit,
+        kind: TypedExprKind::FunctionCall {
+            name: "_ctfe_flush_heap".to_string(),
+            args: vec![],
+        },
+    };
 
-            body_items.push(TypedBlockItem::S(TypedStmt::Return(TypedExpr {
+    Ok(TypedFunDecl {
+        name: "main".to_string(),
+        params: vec![],
+        ret_type: Type::I32,
+        body: Some(TypedBlock::Block(vec![
+            TypedBlockItem::S(TypedStmt::Expr(serialize_call)),
+            TypedBlockItem::S(TypedStmt::Expr(flush_expr)),
+            TypedBlockItem::S(TypedStmt::Return(TypedExpr {
                 ty: Type::I32,
                 kind: TypedExprKind::Constant(Const::I32(0)),
-            })));
-
-            Ok(TypedFunDecl {
-                name: "main".to_string(),
-                params: vec![],
-                ret_type: Type::I32,
-                body: Some(TypedBlock::Block(body_items)),
-                exec_time: ExecTime::Runtime,
-            })
-        }
-        _ => {
-            let call_expr = TypedExpr {
-                ty: ret_type.clone(),
-                kind: TypedExprKind::FunctionCall {
-                    name: callee.name.clone(),
-                    args: vec![],
-                },
-            };
-
-            let serialize_call = match ret_type {
-                Type::I32 => TypedExpr {
-                    ty: Type::Unit,
-                    kind: TypedExprKind::FunctionCall {
-                        name: "_ctfe_serialize_i32".to_string(),
-                        args: vec![call_expr],
-                    },
-                },
-                Type::Char => TypedExpr {
-                    ty: Type::Unit,
-                    kind: TypedExprKind::FunctionCall {
-                        name: "_ctfe_write_char".to_string(),
-                        args: vec![call_expr],
-                    },
-                },
-                _ => unimplemented!("Serialization for type {:?} not implemented", ret_type),
-            };
-
-            let flush_expr = TypedExpr {
-                ty: Type::Unit,
-                kind: TypedExprKind::FunctionCall {
-                    name: "_ctfe_flush_heap".to_string(),
-                    args: vec![],
-                },
-            };
-
-            let body = TypedBlock::Block(vec![
-                TypedBlockItem::S(TypedStmt::Expr(serialize_call)),
-                TypedBlockItem::S(TypedStmt::Expr(flush_expr)),
-                TypedBlockItem::S(TypedStmt::Return(TypedExpr {
-                    ty: Type::I32,
-                    kind: TypedExprKind::Constant(Const::I32(0)),
-                })),
-            ]);
-
-            Ok(TypedFunDecl {
-                name: "main".to_string(),
-                params: vec![],
-                ret_type: Type::I32,
-                body: Some(body),
-                exec_time: ExecTime::Runtime,
-            })
-        }
-    }
+            })),
+        ])),
+        exec_time: ExecTime::Runtime,
+    })
 }
 
 fn parse_ctfe_result(output: &str, ty: &Type) -> Result<TypedExpr, String> {
