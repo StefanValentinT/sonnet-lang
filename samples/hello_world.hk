@@ -1,0 +1,4 @@
+fun main() I32 {
+    print(slice("Hello World!"));
+    return 0;
+}

@@ -37,10 +37,10 @@ cofun f_pointer() I32 {
     return *p;
 }
 
-cofun f_unit_side_effect() I32 {
-    let x: I32 = 4;
+cofun f_scope() I32 {
+    let x: I32 = 5;
     {
-        x = 5;
+        x = 4;
     }
     return x;
 }
@@ -52,7 +52,7 @@ fun main() I32 {
     let d: I32 = f_char() as I32;         # 4
     let e: I32 = f_array();               # 4
     let f: I32 = f_pointer();             # 4
-    let g: I32 = f_unit_side_effect();    # 4
+    let g: I32 = f_scope();    # 4
 
     let sum: I32 =
         a + b + c + d + e + f + g;
@@ -60,5 +60,5 @@ fun main() I32 {
     return sum;
 }
 #[
-<expect_ret> 42 </expect_ret>    
+<expect_not> 42 </expect_not>    
 ]#

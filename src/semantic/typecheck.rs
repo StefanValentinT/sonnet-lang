@@ -224,6 +224,10 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             ty: Type::Char,
             kind: TypedExprKind::Constant(Const::Char(*v)),
         },
+        ExprKind::Constant(Const::Unit) => TypedExpr {
+            ty: Type::Unit,
+            kind: TypedExprKind::Constant(Const::Unit),
+        },
         ExprKind::Var(name) => {
             let entry = symbols
                 .get(name)

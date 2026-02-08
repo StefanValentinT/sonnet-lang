@@ -195,8 +195,13 @@ fn decl_to_tac(decl: TypedDecl, instructions: &mut Vec<TacInstruction>) {
 fn stmt_to_tac(stmt: TypedStmt, instructions: &mut Vec<TacInstruction>) {
     match stmt {
         TypedStmt::Return(expr) => {
-            let val = expr_to_tac(expr, instructions);
-            instructions.push(TacInstruction::Return(Some(val)));
+            if expr.ty == Type::Unit {
+                expr_to_tac(expr, instructions);
+                instructions.push(TacInstruction::Return(None));
+            } else {
+                let val = expr_to_tac(expr, instructions);
+                instructions.push(TacInstruction::Return(Some(val)));
+            }
         }
         TypedStmt::Expr(expr) => {
             expr_to_tac(expr, instructions);
@@ -237,7 +242,6 @@ fn stmt_to_tac(stmt: TypedStmt, instructions: &mut Vec<TacInstruction>) {
         TypedStmt::Null => {}
     }
 }
-
 fn expr_to_exp_result(expr: TypedExpr, instructions: &mut Vec<TacInstruction>) -> ExpResult {
     match expr.kind {
         TypedExprKind::Dereference(inner) => {
@@ -311,6 +315,9 @@ fn expr_to_tac(expr: TypedExpr, instructions: &mut Vec<TacInstruction>) -> TacVa
         TypedExprKind::Constant(Const::I32(v)) => TacVal::Constant(TacConst::I32(v)),
         TypedExprKind::Constant(Const::I64(v)) => TacVal::Constant(TacConst::I64(v)),
         TypedExprKind::Constant(Const::F64(v)) => TacVal::Constant(TacConst::F64(v)),
+        TypedExprKind::Constant(Const::Unit) => {
+            panic!("Internal error: Unit constant used as value in TAC generation");
+        }
         TypedExprKind::Constant(Const::Char(v)) => TacVal::Constant(TacConst::Char(v)),
         TypedExprKind::Var(name) => TacVal::Var(name, expr.ty),
         TypedExprKind::Unary { op, expr: inner } => {

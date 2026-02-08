@@ -83,6 +83,8 @@ fn run_haiku(path: &Path) -> CompilerResult {
     let abs = path.canonicalize().unwrap();
 
     let output = std::process::Command::new("haiku")
+        .arg("run")
+        .arg("--single-file")
         .arg(&abs)
         .output()
         .expect("failed to run haiku");

@@ -25,6 +25,7 @@ pub enum Const {
     I64(i64),
     F64(f64),
     Char(char),
+    Unit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

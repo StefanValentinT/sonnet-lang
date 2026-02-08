@@ -18,6 +18,7 @@ use crate::{
     tac::gen_tac,
 };
 use clap::Parser;
+use clap::Subcommand;
 use std::process::Stdio;
 use std::{fs, io::Write, path::Path, process::Command};
 
@@ -34,9 +35,27 @@ macro_rules! vprintln {
 const DEV_BUILD: &str = env!("DEV_BUILD");
 static mut VERBOSE: bool = false;
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Run(RunArgs),
+    Lsp,
+}
+
 #[derive(Parser, Debug)]
-#[command(author, version, about)]
-struct Args {
+#[command(
+    author,
+    version,
+    about,
+    subcommand_required = true,
+    arg_required_else_help = true
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Parser, Debug)]
+struct RunArgs {
     #[arg(long)]
     lex: bool,
 
@@ -58,8 +77,8 @@ struct Args {
     #[arg(short, long)]
     verbose: bool,
 
-    #[arg(long)]
-    lsp: bool,
+    #[arg(short = 'f', long = "single-file")]
+    single_file: bool,
 
     filename: Option<String>,
 }
@@ -125,8 +144,21 @@ pub fn compile_ir(input_path: &str, asm_text: &str, object_only: bool) -> String
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
+    let cli = Cli::parse();
 
+    match cli.command {
+        Commands::Lsp => {
+            lsp::run_language_server().await;
+            return;
+        }
+
+        Commands::Run(args) => {
+            run_command(args).await;
+        }
+    }
+}
+
+async fn run_command(args: RunArgs) {
     unsafe {
         VERBOSE = args.verbose;
     }
@@ -144,12 +176,21 @@ async fn main() {
     );
     println!("{}", DEV_BUILD);
 
-    if args.lsp {
-        lsp::run_language_server().await;
-        return;
-    }
+    let filename = match (args.single_file, args.filename.as_ref()) {
+        (true, Some(f)) => f.clone(),
 
-    let filename = args.filename.as_ref().expect("No input file provided");
+        (true, None) => {
+            eprintln!("Error: --single-file requires a file path");
+            std::process::exit(1);
+        }
+
+        (false, Some(_)) => {
+            eprintln!("Error: No file path allowed without --single-file");
+            std::process::exit(1)
+        }
+
+        (false, None) => "main.hk".to_string(),
+    };
 
     let content = fs::read_to_string(&filename).expect("Failed to read the input file");
 

@@ -25,7 +25,7 @@ pub fn builtin_functions() -> HashMap<String, TypedFunDecl> {
     map
 }
 
-pub fn is_stdlib_fun(fun: TypedFunDecl) -> bool {
+pub fn is_stdlib_fun(fun: &TypedFunDecl) -> bool {
     builtin_functions().contains_key(&fun.name)
-        && (builtin_functions().get(&fun.name).expect("Checked.") == &fun)
+        && (builtin_functions().get(&fun.name).expect("Checked.") == fun)
 }
