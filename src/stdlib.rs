@@ -1,14 +1,14 @@
 use crate::ast::ast_type::ExecTime;
 use crate::ast::ast_type::Type;
-use crate::ast::typed_ast::TypedFunDecl;
+use crate::ast::untyped_ast::*;
 use std::collections::HashMap;
 
-pub fn builtin_functions() -> HashMap<String, TypedFunDecl> {
+pub fn builtin_functions() -> HashMap<String, FunDecl> {
     let mut map = HashMap::new();
 
     map.insert(
         "print".to_string(),
-        TypedFunDecl {
+        FunDecl {
             name: "print".to_string(),
             params: vec![(
                 "s".to_string(),
@@ -25,7 +25,7 @@ pub fn builtin_functions() -> HashMap<String, TypedFunDecl> {
     map
 }
 
-pub fn is_stdlib_fun(fun: &TypedFunDecl) -> bool {
+pub fn is_stdlib_fun(fun: &FunDecl) -> bool {
     builtin_functions().contains_key(&fun.name)
         && (builtin_functions().get(&fun.name).expect("Checked.") == fun)
 }

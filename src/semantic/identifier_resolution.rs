@@ -17,7 +17,7 @@ pub fn identifier_resolution_pass(program: Program) -> Program {
 
             for (name, fun_decl) in builtin_functions() {
                 global_map.insert(
-                    name.clone(),
+                    name.to_string(),
                     MapEntry {
                         unique_name: fun_decl.name.clone(),
                         from_current_scope: false,

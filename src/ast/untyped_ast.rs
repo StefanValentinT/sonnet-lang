@@ -5,24 +5,24 @@ pub enum Program {
     Program(Vec<FunDecl>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Decl {
     Variable(VarDecl),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl {
     pub name: String,
     pub initializer: Initializer,
     pub var_type: Type,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Initializer {
     InitExpr(Expr),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunDecl {
     pub name: String,
     pub params: Vec<(String, Type)>,
@@ -31,18 +31,18 @@ pub struct FunDecl {
     pub exec_time: ExecTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Block(Vec<BlockItem>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockItem {
     S(Stmt),
     D(Decl),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Return(Expr),
     Expression(Expr),

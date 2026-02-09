@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::ast::ast_type::*;
-use crate::ast::typed_ast::*;
 use crate::ast::untyped_ast::*;
 use crate::stdlib::builtin_functions;
 
@@ -12,9 +11,12 @@ struct SymbolEntry {
 
 type SymbolTable = HashMap<String, SymbolEntry>;
 
-pub fn typecheck(program: Program) -> TypedProgram {
+pub fn typecheck(program: Program) -> Program {
     let mut symbols = SymbolTable::new();
-    let Program::Program(funcs) = program;
+
+    let funcs = match program {
+        Program::Program(funcs) => funcs,
+    };
 
     for (name, fun) in builtin_functions() {
         let fun_ty = Type::FunType {
@@ -28,14 +30,12 @@ pub fn typecheck(program: Program) -> TypedProgram {
         declare_function(f, &mut symbols);
     }
 
-    let mut typed_funs = Vec::new();
-    for f in funcs {
-        typed_funs.push(typecheck_fun_decl(f, &symbols));
-    }
+    let typed_funs: Vec<FunDecl> = funcs
+        .into_iter()
+        .map(|f| typecheck_fun_decl(f, &symbols))
+        .collect();
 
-    TypedProgram {
-        functions: typed_funs,
-    }
+    Program::Program(typed_funs)
 }
 
 fn declare_function(decl: &FunDecl, symbols: &mut SymbolTable) {
@@ -54,7 +54,7 @@ fn declare_function(decl: &FunDecl, symbols: &mut SymbolTable) {
     symbols.insert(decl.name.clone(), SymbolEntry { ty: fun_ty });
 }
 
-fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> TypedFunDecl {
+fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
     let SymbolEntry { ty, .. } = globals.get(&decl.name).unwrap().clone();
 
     let (param_types, ret_ty) = match ty {
@@ -82,9 +82,9 @@ fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> TypedFunDecl {
 
     let body = decl
         .body
-        .map(|b| TypedBlock::Block(typecheck_block(&b, &mut locals, &ret_ty)));
+        .map(|b| Block::Block(typecheck_block(&b, &mut locals, &ret_ty)));
 
-    TypedFunDecl {
+    FunDecl {
         name: decl.name,
         params: typed_params,
         ret_type: ret_ty,
@@ -97,26 +97,26 @@ fn typecheck_block(
     block: &Block,
     symbols: &mut SymbolTable,
     expected_ret: &Type,
-) -> Vec<TypedBlockItem> {
+) -> Vec<BlockItem> {
     let Block::Block(items) = block;
 
     items
         .iter()
         .map(|item| match item {
-            BlockItem::D(d) => TypedBlockItem::D(typecheck_decl(d, symbols)),
-            BlockItem::S(s) => TypedBlockItem::S(typecheck_stmt(s, symbols, expected_ret)),
+            BlockItem::D(d) => BlockItem::D(typecheck_decl(d, symbols)),
+            BlockItem::S(s) => BlockItem::S(typecheck_stmt(s, symbols, expected_ret)),
         })
         .collect()
 }
 
-fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> TypedDecl {
+fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
     match decl {
         Decl::Variable(v) => {
             let init_expr = match &v.initializer {
                 Initializer::InitExpr(expr) => expr,
             };
             let init = typecheck_expr(&init_expr, symbols);
-            if init.ty != v.var_type {
+            if init.ty != Some(v.var_type.clone()) {
                 panic!(
                     "Type mismatch in variable '{}': expected {:?}, got {:?}",
                     v.name, v.var_type, init.ty
@@ -130,42 +130,44 @@ fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> TypedDecl {
                 },
             );
 
-            TypedDecl::Variable(TypedVarDecl {
+            Decl::Variable(VarDecl {
                 name: v.name.clone(),
-                init_expr: init,
+                initializer: Initializer::InitExpr(init),
                 var_type: v.var_type.clone(),
             })
         }
     }
 }
 
-fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable, expected_ret: &Type) -> TypedStmt {
+fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable, expected_ret: &Type) -> Stmt {
     match stmt {
         Stmt::Return(expr) => {
             let typed = typecheck_expr(expr, symbols);
-            if &typed.ty != expected_ret {
+            if typed.ty != Some(expected_ret.clone()) {
                 panic!(
                     "Return type mismatch: expected {:?}, got {:?}",
                     expected_ret, typed.ty
                 );
             }
-            TypedStmt::Return(typed)
+            Stmt::Return(typed)
         }
 
-        Stmt::Expression(expr) => TypedStmt::Expr(typecheck_expr(expr, symbols)),
+        Stmt::Expression(expr) => Stmt::Expression(typecheck_expr(expr, symbols)),
 
-        Stmt::Null => TypedStmt::Null,
+        Stmt::Null => Stmt::Null,
 
-        Stmt::Compound(block) => {
+        Stmt::Compound(Block::Block(items)) => {
             let mut inner = symbols.clone();
-            let stmts = typecheck_block(block, &mut inner, expected_ret)
-                .into_iter()
-                .filter_map(|i| match i {
-                    TypedBlockItem::S(s) => Some(s),
-                    _ => None,
-                })
-                .collect();
-            TypedStmt::Block(stmts)
+            let typed_items: Vec<BlockItem> =
+                typecheck_block(&Block::Block(items.clone()), &mut inner, expected_ret)
+                    .into_iter()
+                    .map(|item| match item {
+                        BlockItem::S(stmt) => BlockItem::S(stmt),
+                        BlockItem::D(decl) => BlockItem::D(decl),
+                    })
+                    .collect();
+
+            Stmt::Compound(Block::Block(typed_items))
         }
 
         Stmt::While {
@@ -174,29 +176,29 @@ fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable, expected_ret: &Type) -
             label,
         } => {
             let cond = typecheck_expr(condition, symbols);
-            if cond.ty != Type::I32 {
+            if cond.ty != Some(Type::I32) {
                 panic!("While condition must be I32");
             }
             let body = Box::new(typecheck_stmt(body, symbols, expected_ret));
-            TypedStmt::While {
+            Stmt::While {
                 condition: cond,
                 body,
                 label: label.clone(),
             }
         }
 
-        Stmt::Break { label } => TypedStmt::Break {
+        Stmt::Break { label } => Stmt::Break {
             label: label.clone(),
         },
 
-        Stmt::Continue { label } => TypedStmt::Continue {
+        Stmt::Continue { label } => Stmt::Continue {
             label: label.clone(),
         },
     }
 }
 
-fn convert_by_assignment(e: TypedExpr, target: &Type) -> TypedExpr {
-    if &e.ty == target {
+fn convert_by_assignment(e: Expr, target: &Type) -> Expr {
+    if e.ty == Some(target.clone()) {
         e
     } else {
         panic!(
@@ -206,54 +208,51 @@ fn convert_by_assignment(e: TypedExpr, target: &Type) -> TypedExpr {
     }
 }
 
-fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
+fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
     match &expr.kind {
-        ExprKind::Constant(Const::I32(v)) => TypedExpr {
-            ty: Type::I32,
-            kind: TypedExprKind::Constant(Const::I32(*v)),
+        ExprKind::Constant(Const::I32(v)) => Expr {
+            ty: Some(Type::I32),
+            kind: ExprKind::Constant(Const::I32(*v)),
         },
-        ExprKind::Constant(Const::I64(v)) => TypedExpr {
-            ty: Type::I64,
-            kind: TypedExprKind::Constant(Const::I64(*v)),
+        ExprKind::Constant(Const::I64(v)) => Expr {
+            ty: Some(Type::I64),
+            kind: ExprKind::Constant(Const::I64(*v)),
         },
-        ExprKind::Constant(Const::F64(v)) => TypedExpr {
-            ty: Type::F64,
-            kind: TypedExprKind::Constant(Const::F64(*v)),
+        ExprKind::Constant(Const::F64(v)) => Expr {
+            ty: Some(Type::F64),
+            kind: ExprKind::Constant(Const::F64(*v)),
         },
-        ExprKind::Constant(Const::Char(v)) => TypedExpr {
-            ty: Type::Char,
-            kind: TypedExprKind::Constant(Const::Char(*v)),
+        ExprKind::Constant(Const::Char(v)) => Expr {
+            ty: Some(Type::Char),
+            kind: ExprKind::Constant(Const::Char(*v)),
         },
-        ExprKind::Constant(Const::Unit) => TypedExpr {
-            ty: Type::Unit,
-            kind: TypedExprKind::Constant(Const::Unit),
+        ExprKind::Constant(Const::Unit) => Expr {
+            ty: Some(Type::Unit),
+            kind: ExprKind::Constant(Const::Unit),
         },
         ExprKind::Var(name) => {
             let entry = symbols
                 .get(name)
                 .unwrap_or_else(|| panic!("Undefined variable {}", name));
-            TypedExpr {
-                ty: entry.ty.clone(),
-                kind: TypedExprKind::Var(name.clone()),
+            Expr {
+                ty: Some(entry.ty.clone()),
+                kind: ExprKind::Var(name.clone()),
             }
         }
         ExprKind::Unary(op, e) => {
             let typed_inner = typecheck_expr(e, symbols);
 
             match (&op, &typed_inner.ty) {
-                (UnaryOp::Negate, Type::Pointer { .. })
-                | (UnaryOp::Complement, Type::Pointer { .. }) => {
+                (UnaryOp::Negate, Some(Type::Pointer { .. }))
+                | (UnaryOp::Complement, Some(Type::Pointer { .. })) => {
                     panic!("Cannot apply {:?} to a pointer type", op);
                 }
                 _ => {}
             }
 
-            TypedExpr {
+            Expr {
                 ty: typed_inner.ty.clone(),
-                kind: TypedExprKind::Unary {
-                    op: op.clone(),
-                    expr: Box::new(typed_inner),
-                },
+                kind: ExprKind::Unary(op.clone(), Box::new(typed_inner)),
             }
         }
         ExprKind::Binary(op, lhs, rhs) => {
@@ -261,7 +260,7 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             let r = typecheck_expr(rhs, symbols);
 
             match (&l.ty, &r.ty) {
-                (Type::Pointer { .. }, Type::Pointer { .. }) => match op {
+                (Some(Type::Pointer { .. }), Some(Type::Pointer { .. })) => match op {
                     BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::And | BinaryOp::Or => {}
                     _ => panic!("Illegal operation on pointer types: {:?}", op),
                 },
@@ -269,18 +268,14 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
                 _ => panic!("Binary op type mismatch: {:?} vs {:?}", l.ty, r.ty),
             }
 
-            TypedExpr {
+            Expr {
                 ty: match op {
                     BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::And | BinaryOp::Or => {
-                        Type::I32
+                        Some(Type::I32)
                     }
                     _ => l.ty.clone(),
                 },
-                kind: TypedExprKind::Binary {
-                    op: op.clone(),
-                    lhs: Box::new(l),
-                    rhs: Box::new(r),
-                },
+                kind: ExprKind::Binary(op.clone(), Box::new(l), Box::new(r)),
             }
         }
         ExprKind::Assign(lhs, rhs) => {
@@ -291,14 +286,11 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             }
 
             let r = typecheck_expr(rhs, symbols);
-            let r_conv = convert_by_assignment(r, &l.ty);
+            let r_conv = convert_by_assignment(r, &(l.ty.clone().unwrap()));
 
-            TypedExpr {
+            Expr {
                 ty: l.ty.clone(),
-                kind: TypedExprKind::Assign {
-                    lhs: Box::new(l),
-                    rhs: Box::new(r_conv),
-                },
+                kind: ExprKind::Assign(Box::new(l), Box::new(r_conv)),
             }
         }
         ExprKind::IfThenElse(cond, t, e) => {
@@ -313,13 +305,9 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
                 );
             }
 
-            TypedExpr {
+            Expr {
                 ty: t.ty.clone(),
-                kind: TypedExprKind::IfThenElse {
-                    cond: Box::new(c),
-                    then_expr: Box::new(t),
-                    else_expr: Box::new(e),
-                },
+                kind: ExprKind::IfThenElse(Box::new(c), Box::new(t), Box::new(e)),
             }
         }
         ExprKind::FunctionCall(name, args) => {
@@ -339,7 +327,7 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             let typed_args: Vec<_> = args.iter().map(|a| typecheck_expr(a, symbols)).collect();
 
             for (arg, param_ty) in typed_args.iter().zip(params.iter()) {
-                if &arg.ty != param_ty {
+                if arg.ty != Some(param_ty.clone()) {
                     panic!(
                         "Argument type mismatch in call to {}: expected {:?}, got {:?}",
                         name, param_ty, arg.ty
@@ -347,20 +335,17 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
                 }
             }
 
-            TypedExpr {
-                ty: ret,
-                kind: TypedExprKind::FunctionCall {
-                    name: name.clone(),
-                    args: typed_args,
-                },
+            Expr {
+                ty: Some(ret),
+                kind: ExprKind::FunctionCall(name.clone(), typed_args),
             }
         }
         ExprKind::Cast { expr, target } => {
             let typed_inner = typecheck_expr(expr, symbols);
 
             match (&typed_inner.ty, target) {
-                (Type::Pointer { .. }, Type::I32 | Type::I64 | Type::F64)
-                | (Type::I32 | Type::I64 | Type::F64, Type::Pointer { .. }) => {
+                (Some(Type::Pointer { .. }), Type::I32 | Type::I64 | Type::F64)
+                | (Some(Type::I32) | Some(Type::I64) | Some(Type::F64), Type::Pointer { .. }) => {
                     panic!(
                         "Invalid cast from {:?} to pointer/non-pointer {:?}",
                         typed_inner.ty, target
@@ -369,9 +354,9 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
                 _ => {}
             }
 
-            TypedExpr {
-                ty: target.clone(),
-                kind: TypedExprKind::Cast {
+            Expr {
+                ty: Some(target.clone()),
+                kind: ExprKind::Cast {
                     expr: Box::new(typed_inner),
                     target: target.clone(),
                 },
@@ -381,9 +366,9 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             let typed_inner = typecheck_expr(inner, symbols);
 
             match &typed_inner.ty {
-                Type::Pointer { referenced } => TypedExpr {
-                    ty: (**referenced).clone(),
-                    kind: TypedExprKind::Dereference(Box::new(typed_inner)),
+                Some(Type::Pointer { referenced }) => Expr {
+                    ty: Some((**referenced).clone()),
+                    kind: ExprKind::Dereference(Box::new(typed_inner)),
                 },
                 _ => panic!("Cannot dereference non-pointer."),
             }
@@ -395,11 +380,11 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
 
             let typed_inner = typecheck_expr(inner, symbols);
 
-            TypedExpr {
-                ty: Type::Pointer {
-                    referenced: Box::new(typed_inner.ty.clone()),
-                },
-                kind: TypedExprKind::AddrOf(Box::new(typed_inner)),
+            Expr {
+                ty: Some(Type::Pointer {
+                    referenced: Box::new(typed_inner.ty.clone().unwrap()),
+                }),
+                kind: ExprKind::AddrOf(Box::new(typed_inner)),
             }
         }
 
@@ -420,12 +405,12 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
                 }
             }
 
-            TypedExpr {
-                ty: Type::Array {
-                    element_type: Box::new(first_ty.clone()),
+            Expr {
+                ty: Some(Type::Array {
+                    element_type: Box::new(first_ty.as_ref().unwrap().clone()),
                     size: typed_exprs.len() as i32,
-                },
-                kind: TypedExprKind::ArrayLiteral(typed_exprs),
+                }),
+                kind: ExprKind::ArrayLiteral(typed_exprs),
             }
         }
 
@@ -433,44 +418,44 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> TypedExpr {
             let typed_array = typecheck_expr(array_expr, symbols);
             let typed_index = typecheck_expr(index_expr, symbols);
 
-            if typed_index.ty != Type::I32 {
+            if typed_index.ty != Some(Type::I32) {
                 panic!("Array index must be I32, got {:?}", typed_index.ty);
             }
 
             let element_ty = match &typed_array.ty {
-                Type::Array { element_type, .. } => (**element_type).clone(),
-                Type::Slice { element_type } => (**element_type).clone(),
+                Some(Type::Array { element_type, .. }) => (**element_type).clone(),
+                Some(Type::Slice { element_type }) => (**element_type).clone(),
                 other => panic!("Cannot index non-array/slice type {:?}", other),
             };
 
-            TypedExpr {
-                ty: element_ty,
-                kind: TypedExprKind::ArrayIndex(Box::new(typed_array), Box::new(typed_index)),
+            Expr {
+                ty: Some(element_ty),
+                kind: ExprKind::ArrayIndex(Box::new(typed_array), Box::new(typed_index)),
             }
         }
         ExprKind::SliceFromArray(inner) => {
             let typed_inner = typecheck_expr(inner, symbols);
 
             let element_ty = match &typed_inner.ty {
-                Type::Array { element_type, .. } => (**element_type).clone(),
-                Type::Slice { element_type } => (**element_type).clone(),
+                Some(Type::Array { element_type, .. }) => (**element_type).clone(),
+                Some(Type::Slice { element_type }) => (**element_type).clone(),
                 other => panic!("slice() expects an array or slice, got {:?}", other),
             };
 
-            TypedExpr {
-                ty: Type::Slice {
+            Expr {
+                ty: Some(Type::Slice {
                     element_type: Box::new(element_ty),
-                },
-                kind: TypedExprKind::SliceFromArray(Box::new(typed_inner)),
+                }),
+                kind: ExprKind::SliceFromArray(Box::new(typed_inner)),
             }
         }
         ExprKind::SliceLen(inner) => {
             let typed_inner = typecheck_expr(inner, symbols);
 
             match typed_inner.ty {
-                Type::Slice { .. } => TypedExpr {
-                    ty: Type::I32,
-                    kind: TypedExprKind::SliceLen(Box::new(typed_inner)),
+                Some(Type::Slice { .. }) => Expr {
+                    ty: Some(Type::I32),
+                    kind: ExprKind::SliceLen(Box::new(typed_inner)),
                 },
                 other => panic!("len() expects a slice, got {:?}", other),
             }
