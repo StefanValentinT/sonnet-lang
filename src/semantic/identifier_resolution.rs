@@ -52,15 +52,15 @@ pub fn identifier_resolution_pass(program: Program) -> Program {
 }
 
 fn resolve_block(block: Block, identifier_map: &mut HashMap<String, MapEntry>) -> Block {
-    match block {
-        Block::Block(items) => {
-            let new_items = items
-                .into_iter()
-                .map(|item| resolve_block_item(item, identifier_map))
-                .collect();
-            Block::Block(new_items)
-        }
-    }
+    let Block::Block(items, last_expr) = block;
+    let mut local_map = identifier_map.clone();
+    let new_items = items
+        .into_iter()
+        .map(|item| resolve_block_item(item, &mut local_map))
+        .collect();
+
+    let new_last_expr = resolve_expr(last_expr, &mut local_map);
+    Block::Block(new_items, new_last_expr)
 }
 
 fn resolve_block_item(
@@ -156,14 +156,8 @@ fn resolve_param(param_name: String, identifier_map: &mut HashMap<String, MapEnt
 
 fn resolve_stmt(stmt: Stmt, identifier_map: &mut HashMap<String, MapEntry>) -> Stmt {
     match stmt {
-        Stmt::Return(expr) => Stmt::Return(resolve_expr(expr, identifier_map)),
         Stmt::Expression(expr) => Stmt::Expression(resolve_expr(expr, identifier_map)),
         Stmt::Null => Stmt::Null,
-        Stmt::Compound(block) => {
-            let mut local_map = copy_identifier_map(identifier_map);
-            let resolved_block = resolve_block(block, &mut local_map);
-            Stmt::Compound(resolved_block)
-        }
         Stmt::Break { label } => Stmt::Break { label },
         Stmt::Continue { label } => Stmt::Continue { label },
         Stmt::While {
@@ -192,6 +186,24 @@ fn resolve_expr(expr: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> E
                 panic!("Undeclared variable: {}", v);
             }
         }
+        ExprKind::Compound(block) => {
+            let Block::Block(items, last_expr) = *block;
+
+            let mut local_map = identifier_map.clone();
+
+            let new_items = items
+                .into_iter()
+                .map(|item| resolve_block_item(item, &mut local_map))
+                .collect::<Vec<_>>();
+
+            let new_last_expr = resolve_expr(last_expr, &mut local_map);
+
+            Expr {
+                ty: new_last_expr.ty.clone(),
+                kind: ExprKind::Compound(Box::new(Block::Block(new_items, new_last_expr))),
+            }
+        }
+
         ExprKind::Unary(op, inner) => {
             let inner = resolve_expr(*inner, identifier_map);
             Expr {

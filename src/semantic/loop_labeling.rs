@@ -29,14 +29,25 @@ fn label_func_decl(func: FunDecl) -> FunDecl {
         exec_time,
     }
 }
-
 fn label_block(block: Block, current_label: Option<String>) -> Block {
-    let Block::Block(items) = block;
-    let items = items
+    let Block::Block(items, expr) = block;
+
+    let new_items = items
         .into_iter()
         .map(|item| label_block_item(item, current_label.clone()))
-        .collect();
-    Block::Block(items)
+        .collect::<Vec<_>>();
+    let new_expr = match expr.kind {
+        ExprKind::Compound(inner_block) => {
+            let labeled_block = label_block(*inner_block, current_label.clone());
+            Expr {
+                ty: expr.ty,
+                kind: ExprKind::Compound(Box::new(labeled_block)),
+            }
+        }
+        _ => expr,
+    };
+
+    Block::Block(new_items, new_expr)
 }
 
 fn label_block_item(item: BlockItem, current_label: Option<String>) -> BlockItem {
@@ -55,7 +66,6 @@ pub fn label_statement(stmt: Stmt, current_label: Option<String>) -> Stmt {
                 .clone();
             Stmt::Break { label }
         }
-
         Stmt::Continue { .. } => {
             let label = current_label
                 .as_ref()
@@ -63,7 +73,6 @@ pub fn label_statement(stmt: Stmt, current_label: Option<String>) -> Stmt {
                 .clone();
             Stmt::Continue { label }
         }
-
         Stmt::While {
             condition, body, ..
         } => {
@@ -75,9 +84,6 @@ pub fn label_statement(stmt: Stmt, current_label: Option<String>) -> Stmt {
                 label: new_label,
             }
         }
-
-        Stmt::Compound(block) => Stmt::Compound(label_block(block, current_label)),
-
-        Stmt::Return(_) | Stmt::Expression(_) | Stmt::Null => stmt,
+        Stmt::Expression(_) | Stmt::Null => stmt,
     }
 }

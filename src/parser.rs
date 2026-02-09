@@ -161,22 +161,35 @@ fn parse_block(tokens: &mut Queue<Token>) -> Block {
 
     let mut items = Vec::new();
 
-    while let Ok(tok) = tokens.peek() {
-        if tok == Token::CloseBrace {
-            break;
+    loop {
+        match tokens.peek().unwrap() {
+            Token::CloseBrace => {
+                tokens.consume();
+                return Block::Block(
+                    items,
+                    Expr {
+                        ty: Some(Type::Unit),
+                        kind: ExprKind::Constant(Const::Unit),
+                    },
+                );
+            }
+
+            Token::Keyword(ref s) if s == "let" => {
+                items.push(BlockItem::D(parse_declaration(tokens)));
+            }
+
+            _ => {
+                let expr = parse_expr(tokens, 0);
+
+                if tokens.peek().unwrap() == Token::Semicolon {
+                    tokens.consume();
+                    items.push(BlockItem::S(Stmt::Expression(expr)));
+                } else {
+                    expect(Token::CloseBrace, tokens);
+                    return Block::Block(items, expr);
+                }
+            }
         }
-        items.push(parse_block_item(tokens));
-    }
-
-    expect(Token::CloseBrace, tokens);
-
-    Block::Block(items)
-}
-
-fn parse_block_item(tokens: &mut Queue<Token>) -> BlockItem {
-    match tokens.peek().unwrap() {
-        Token::Keyword(ref s) if s == "let" => BlockItem::D(parse_declaration(tokens)),
-        _ => BlockItem::S(parse_statement(tokens)),
     }
 }
 
@@ -208,13 +221,6 @@ fn parse_declaration(tokens: &mut Queue<Token>) -> Decl {
 fn parse_statement(tokens: &mut Queue<Token>) -> Stmt {
     match tokens.peek().unwrap() {
         Token::Keyword(ref s) => match s.as_str() {
-            "return" => {
-                tokens.consume();
-                let expr = parse_expr(tokens, 0);
-                expect(Token::Semicolon, tokens);
-                Stmt::Return(expr)
-            }
-
             "break" => {
                 tokens.consume();
                 expect(Token::Semicolon, tokens);
@@ -250,11 +256,6 @@ fn parse_statement(tokens: &mut Queue<Token>) -> Stmt {
                 Stmt::Expression(expr)
             }
         },
-
-        Token::OpenBrace => {
-            let block = parse_block(tokens);
-            Stmt::Compound(block)
-        }
 
         Token::Semicolon => {
             tokens.consume();
@@ -322,6 +323,13 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
             Expr {
                 ty: None,
                 kind: ExprKind::ArrayLiteral(elements),
+            }
+        }
+        Token::OpenBrace => {
+            let block = parse_block(tokens);
+            Expr {
+                ty: None,
+                kind: ExprKind::Compound(Box::new(block)),
             }
         }
 

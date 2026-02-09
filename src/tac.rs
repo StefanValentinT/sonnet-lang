@@ -153,33 +153,34 @@ pub fn gen_tac(program: Program) -> TacProgram {
     };
     TacProgram::Program(tac_funcs)
 }
-
 fn func_to_tac(func: FunDecl) -> TacFuncDef {
-    let mut instructions = Vec::new();
+    let mut body = Vec::new();
 
-    if let Some(body) = func.body.clone() {
-        block_to_tac(body, &mut instructions);
+    if let Some(block) = func.body {
+        let ret_val = block_to_tac(block, &mut body);
+
+        body.push(TacInstruction::Return(Some(ret_val)));
     }
 
     TacFuncDef::Function {
         name: func.name,
         params: func.params,
         ret_type: func.ret_type,
-        body: instructions,
+        body,
     }
 }
 
-fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) {
-    match block {
-        Block::Block(items) => {
-            for item in items {
-                match item {
-                    BlockItem::S(stmt) => stmt_to_tac(stmt, instructions),
-                    BlockItem::D(decl) => decl_to_tac(decl, instructions),
-                }
-            }
+fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> TacVal {
+    let Block::Block(items, final_expr) = block;
+
+    for item in items {
+        match item {
+            BlockItem::S(stmt) => stmt_to_tac(stmt, instructions),
+            BlockItem::D(decl) => decl_to_tac(decl, instructions),
         }
     }
+
+    expr_to_tac(final_expr, instructions)
 }
 
 fn decl_to_tac(decl: Decl, instructions: &mut Vec<TacInstruction>) {
@@ -198,26 +199,8 @@ fn decl_to_tac(decl: Decl, instructions: &mut Vec<TacInstruction>) {
 
 fn stmt_to_tac(stmt: Stmt, instructions: &mut Vec<TacInstruction>) {
     match stmt {
-        Stmt::Return(expr) => {
-            if expr.ty == Some(Type::Unit) {
-                expr_to_tac(expr, instructions);
-                instructions.push(TacInstruction::Return(None));
-            } else {
-                let val = expr_to_tac(expr, instructions);
-                instructions.push(TacInstruction::Return(Some(val)));
-            }
-        }
         Stmt::Expression(expr) => {
             expr_to_tac(expr, instructions);
-        }
-        Stmt::Compound(stmts) => {
-            if let Block::Block(stmts) = stmts {
-                for s in stmts {
-                    if let BlockItem::S(st) = s {
-                        stmt_to_tac(st, instructions);
-                    }
-                }
-            }
         }
         Stmt::While {
             condition,
@@ -323,6 +306,16 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
             panic!("Internal error: Unit constant used as value in TAC generation");
         }
         ExprKind::Constant(Const::Char(v)) => TacVal::Constant(TacConst::Char(v)),
+        ExprKind::Compound(block) => {
+            let Block::Block(items, final_expr) = *block;
+            for item in items {
+                match item {
+                    BlockItem::D(decl) => decl_to_tac(decl, instructions),
+                    BlockItem::S(stmt) => stmt_to_tac(stmt, instructions),
+                }
+            }
+            expr_to_tac(final_expr, instructions)
+        }
         ExprKind::Var(name) => TacVal::Var(name, expr.ty.unwrap()),
         ExprKind::Unary(op, inner) => {
             let src = expr_to_tac(*inner.clone(), instructions);

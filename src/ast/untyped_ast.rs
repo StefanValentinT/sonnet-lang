@@ -33,7 +33,7 @@ pub struct FunDecl {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
-    Block(Vec<BlockItem>),
+    Block(Vec<BlockItem>, Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,9 +44,7 @@ pub enum BlockItem {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    Return(Expr),
     Expression(Expr),
-    Compound(Block),
 
     While {
         condition: Expr,
@@ -75,6 +73,7 @@ pub enum ExprKind {
     Constant(Const),
     Var(String),
 
+    Compound(Box<Block>),
     Unary(UnaryOp, Box<Expr>),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
 

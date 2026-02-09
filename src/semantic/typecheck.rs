@@ -80,9 +80,19 @@ fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
         })
         .collect();
 
-    let body = decl
-        .body
-        .map(|b| Block::Block(typecheck_block(&b, &mut locals, &ret_ty)));
+    let body = decl.body.map(|b| {
+        let typed_block = typecheck_block(&b, &mut locals);
+
+        let Block::Block(_, last_expr) = &typed_block;
+        if last_expr.ty != Some(ret_ty.clone()) {
+            panic!(
+                "Function {} expected return type {:?}, got {:?}",
+                decl.name, ret_ty, last_expr.ty
+            );
+        }
+
+        typed_block
+    });
 
     FunDecl {
         name: decl.name,
@@ -92,21 +102,21 @@ fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
         exec_time: decl.exec_time,
     }
 }
+fn typecheck_block(block: &Block, symbols: &mut SymbolTable) -> Block {
+    let Block::Block(items, last_expr) = block;
+    let mut local_symbols = symbols.clone();
 
-fn typecheck_block(
-    block: &Block,
-    symbols: &mut SymbolTable,
-    expected_ret: &Type,
-) -> Vec<BlockItem> {
-    let Block::Block(items) = block;
-
-    items
+    let typed_items: Vec<BlockItem> = items
         .iter()
         .map(|item| match item {
-            BlockItem::D(d) => BlockItem::D(typecheck_decl(d, symbols)),
-            BlockItem::S(s) => BlockItem::S(typecheck_stmt(s, symbols, expected_ret)),
+            BlockItem::D(d) => BlockItem::D(typecheck_decl(d, &mut local_symbols)),
+            BlockItem::S(s) => BlockItem::S(typecheck_stmt(s, &mut local_symbols)),
         })
-        .collect()
+        .collect();
+
+    let typed_last = typecheck_expr(last_expr, &mut local_symbols);
+
+    Block::Block(typed_items, typed_last)
 }
 
 fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
@@ -139,50 +149,32 @@ fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
     }
 }
 
-fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable, expected_ret: &Type) -> Stmt {
+fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable) -> Stmt {
     match stmt {
-        Stmt::Return(expr) => {
-            let typed = typecheck_expr(expr, symbols);
-            if typed.ty != Some(expected_ret.clone()) {
-                panic!(
-                    "Return type mismatch: expected {:?}, got {:?}",
-                    expected_ret, typed.ty
-                );
-            }
-            Stmt::Return(typed)
+        Stmt::Expression(expr) => {
+            let typed_expr = typecheck_expr(expr, symbols);
+            Stmt::Expression(typed_expr)
         }
-
-        Stmt::Expression(expr) => Stmt::Expression(typecheck_expr(expr, symbols)),
 
         Stmt::Null => Stmt::Null,
-
-        Stmt::Compound(Block::Block(items)) => {
-            let mut inner = symbols.clone();
-            let typed_items: Vec<BlockItem> =
-                typecheck_block(&Block::Block(items.clone()), &mut inner, expected_ret)
-                    .into_iter()
-                    .map(|item| match item {
-                        BlockItem::S(stmt) => BlockItem::S(stmt),
-                        BlockItem::D(decl) => BlockItem::D(decl),
-                    })
-                    .collect();
-
-            Stmt::Compound(Block::Block(typed_items))
-        }
 
         Stmt::While {
             condition,
             body,
             label,
         } => {
-            let cond = typecheck_expr(condition, symbols);
-            if cond.ty != Some(Type::I32) {
-                panic!("While condition must be I32");
+            let typed_cond = typecheck_expr(condition, symbols);
+
+            if typed_cond.ty != Some(Type::I32) {
+                panic!("While condition must be I32, got {:?}", typed_cond.ty);
             }
-            let body = Box::new(typecheck_stmt(body, symbols, expected_ret));
+
+            let mut loop_scope = symbols.clone();
+            let typed_body = Box::new(typecheck_stmt(body, &mut loop_scope));
+
             Stmt::While {
-                condition: cond,
-                body,
+                condition: typed_cond,
+                body: typed_body,
                 label: label.clone(),
             }
         }
@@ -230,6 +222,16 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
             ty: Some(Type::Unit),
             kind: ExprKind::Constant(Const::Unit),
         },
+        ExprKind::Compound(block) => {
+            let typed_block = typecheck_block(block, symbols);
+            let Block::Block(_, last) = &typed_block;
+
+            Expr {
+                ty: last.ty.clone(),
+                kind: ExprKind::Compound(Box::new(typed_block)),
+            }
+        }
+
         ExprKind::Var(name) => {
             let entry = symbols
                 .get(name)
