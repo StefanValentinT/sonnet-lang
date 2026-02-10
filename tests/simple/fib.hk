@@ -7,7 +7,7 @@ fun fib(n: I32) I32 {
 
 fun main() I32 {
     let ex: I32 = fib(10);
-    ex
+       ex
 }
 
 #[

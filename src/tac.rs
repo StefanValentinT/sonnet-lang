@@ -185,7 +185,7 @@ fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> Option<
 
     for item in items {
         match item {
-            BlockItem::S(stmt) => stmt_to_tac(stmt, instructions),
+            BlockItem::UnitExpr(stmt) => stmt_to_tac(stmt, instructions),
             BlockItem::D(decl) => decl_to_tac(decl, instructions),
         }
     }
@@ -210,42 +210,10 @@ fn decl_to_tac(decl: Decl, instructions: &mut Vec<TacInstruction>) {
     }
 }
 
-fn stmt_to_tac(stmt: Stmt, instructions: &mut Vec<TacInstruction>) {
-    match stmt {
-        Stmt::Expression(expr) => {
-            expr_to_tac(expr, instructions);
-        }
-        Stmt::While {
-            condition,
-            body,
-            label,
-        } => {
-            let start_label = label.clone();
-            let end_label = make_loop_label();
-
-            instructions.push(TacInstruction::Label(start_label.clone()));
-            let cond_val = expr_to_tac(condition, instructions);
-            instructions.push(TacInstruction::JumpIfZero {
-                condition: cond_val,
-                target: end_label.clone(),
-            });
-
-            stmt_to_tac(*body, instructions);
-
-            instructions.push(TacInstruction::Jump {
-                target: start_label,
-            });
-            instructions.push(TacInstruction::Label(end_label));
-        }
-        Stmt::Break { label } => {
-            instructions.push(TacInstruction::Jump { target: label });
-        }
-        Stmt::Continue { label } => {
-            instructions.push(TacInstruction::Jump { target: label });
-        }
-        Stmt::Null => {}
-    }
+fn stmt_to_tac(stmt: Expr, instructions: &mut Vec<TacInstruction>) {
+    expr_to_tac(stmt, instructions);
 }
+
 fn expr_to_exp_result(expr: Expr, instructions: &mut Vec<TacInstruction>) -> ExpResult {
     match expr.kind {
         ExprKind::Dereference(inner) => {
@@ -324,7 +292,7 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
             for item in items {
                 match item {
                     BlockItem::D(decl) => decl_to_tac(decl, instructions),
-                    BlockItem::S(stmt) => stmt_to_tac(stmt, instructions),
+                    BlockItem::UnitExpr(expr) => stmt_to_tac(expr, instructions),
                 }
             }
             expr_to_tac(final_expr, instructions)

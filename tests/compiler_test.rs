@@ -167,7 +167,7 @@ fn compiler_tests() {
                 ty: pad_truncate("Skip", TYPE_COL_WIDTH),
                 expected: "".to_string(),
                 actual: "".to_string(),
-                passed: pad_truncate("✅", PASSED_COL_WIDTH),
+                passed: pad_truncate("🟡", PASSED_COL_WIDTH),
             });
             continue;
         }
@@ -267,7 +267,7 @@ fn compiler_tests() {
             ty: pad_truncate(&ty, TYPE_COL_WIDTH),
             expected: pad_truncate(&expected, EXPECTED_COL_WIDTH),
             actual: pad_truncate(&actual, ACTUAL_COL_WIDTH),
-            passed: pad_truncate(if passed { "✅" } else { "❌" }, PASSED_COL_WIDTH),
+            passed: pad_truncate(if passed { "🟢" } else { "🔴" }, PASSED_COL_WIDTH),
         });
         if !passed {
             eprintln!("==== Test failed: {} ====", path.display());

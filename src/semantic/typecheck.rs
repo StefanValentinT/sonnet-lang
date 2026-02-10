@@ -110,7 +110,13 @@ fn typecheck_block(block: &Block, symbols: &mut SymbolTable) -> Block {
         .iter()
         .map(|item| match item {
             BlockItem::D(d) => BlockItem::D(typecheck_decl(d, &mut local_symbols)),
-            BlockItem::S(s) => BlockItem::S(typecheck_stmt(s, &mut local_symbols)),
+            BlockItem::UnitExpr(s) => {
+                let e = typecheck_expr(s, &mut local_symbols);
+                if e.ty != Some(Type::Unit) {
+                    panic!("Value not bound in compound!");
+                }
+                BlockItem::UnitExpr(e)
+            }
         })
         .collect();
 
@@ -146,46 +152,6 @@ fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
                 var_type: v.var_type.clone(),
             })
         }
-    }
-}
-
-fn typecheck_stmt(stmt: &Stmt, symbols: &mut SymbolTable) -> Stmt {
-    match stmt {
-        Stmt::Expression(expr) => {
-            let typed_expr = typecheck_expr(expr, symbols);
-            Stmt::Expression(typed_expr)
-        }
-
-        Stmt::Null => Stmt::Null,
-
-        Stmt::While {
-            condition,
-            body,
-            label,
-        } => {
-            let typed_cond = typecheck_expr(condition, symbols);
-
-            if typed_cond.ty != Some(Type::I32) {
-                panic!("While condition must be I32, got {:?}", typed_cond.ty);
-            }
-
-            let mut loop_scope = symbols.clone();
-            let typed_body = Box::new(typecheck_stmt(body, &mut loop_scope));
-
-            Stmt::While {
-                condition: typed_cond,
-                body: typed_body,
-                label: label.clone(),
-            }
-        }
-
-        Stmt::Break { label } => Stmt::Break {
-            label: label.clone(),
-        },
-
-        Stmt::Continue { label } => Stmt::Continue {
-            label: label.clone(),
-        },
     }
 }
 

@@ -69,7 +69,7 @@ fn resolve_block_item(
 ) -> BlockItem {
     match item {
         BlockItem::D(decl) => BlockItem::D(resolve_decl(decl, identifier_map)),
-        BlockItem::S(stmt) => BlockItem::S(resolve_stmt(stmt, identifier_map)),
+        BlockItem::UnitExpr(stmt) => BlockItem::UnitExpr(resolve_stmt(stmt, identifier_map)),
     }
 }
 
@@ -154,22 +154,8 @@ fn resolve_param(param_name: String, identifier_map: &mut HashMap<String, MapEnt
     unique_name
 }
 
-fn resolve_stmt(stmt: Stmt, identifier_map: &mut HashMap<String, MapEntry>) -> Stmt {
-    match stmt {
-        Stmt::Expression(expr) => Stmt::Expression(resolve_expr(expr, identifier_map)),
-        Stmt::Null => Stmt::Null,
-        Stmt::Break { label } => Stmt::Break { label },
-        Stmt::Continue { label } => Stmt::Continue { label },
-        Stmt::While {
-            condition,
-            body,
-            label,
-        } => Stmt::While {
-            condition: resolve_expr(condition, identifier_map),
-            body: Box::new(resolve_stmt(*body, identifier_map)),
-            label: label,
-        },
-    }
+fn resolve_stmt(stmt: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> Expr {
+    resolve_expr(stmt, identifier_map)
 }
 
 fn resolve_expr(expr: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> Expr {

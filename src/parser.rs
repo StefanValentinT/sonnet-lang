@@ -165,7 +165,7 @@ fn parse_block(tokens: &mut Queue<Token>) -> Block {
 
                 if tokens.peek().unwrap() == Token::Semicolon {
                     tokens.consume();
-                    items.push(BlockItem::S(Stmt::Expression(expr)));
+                    items.push(BlockItem::UnitExpr(expr));
                 } else {
                     expect(Token::CloseBrace, tokens);
                     return Block::Block(items, expr);
@@ -198,58 +198,6 @@ fn parse_declaration(tokens: &mut Queue<Token>) -> Decl {
         initializer,
         var_type,
     })
-}
-
-fn parse_statement(tokens: &mut Queue<Token>) -> Stmt {
-    match tokens.peek().unwrap() {
-        Token::Keyword(ref s) => match s.as_str() {
-            "break" => {
-                tokens.consume();
-                expect(Token::Semicolon, tokens);
-                Stmt::Break {
-                    label: String::new(),
-                }
-            }
-
-            "continue" => {
-                tokens.consume();
-                expect(Token::Semicolon, tokens);
-                Stmt::Continue {
-                    label: String::new(),
-                }
-            }
-
-            "while" => {
-                tokens.consume();
-                expect(Token::OpenParen, tokens);
-                let cond = parse_expr(tokens, 0);
-                expect(Token::CloseParen, tokens);
-                let body = Box::new(parse_statement(tokens));
-                Stmt::While {
-                    condition: cond,
-                    body,
-                    label: String::new(),
-                }
-            }
-
-            _ => {
-                let expr = parse_expr(tokens, 0);
-                expect(Token::Semicolon, tokens);
-                Stmt::Expression(expr)
-            }
-        },
-
-        Token::Semicolon => {
-            tokens.consume();
-            Stmt::Null
-        }
-
-        _ => {
-            let expr = parse_expr(tokens, 0);
-            expect(Token::Semicolon, tokens);
-            Stmt::Expression(expr)
-        }
-    }
 }
 
 fn parse_factor(tokens: &mut Queue<Token>) -> Expr {

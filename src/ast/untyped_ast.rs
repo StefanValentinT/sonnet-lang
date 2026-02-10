@@ -38,28 +38,8 @@ pub enum Block {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockItem {
-    S(Stmt),
+    UnitExpr(Expr),
     D(Decl),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
-    Expression(Expr),
-
-    While {
-        condition: Expr,
-        body: Box<Stmt>,
-        label: String,
-    },
-
-    Break {
-        label: String,
-    },
-    Continue {
-        label: String,
-    },
-
-    Null,
 }
 
 #[derive(Debug, Clone, PartialEq)]
