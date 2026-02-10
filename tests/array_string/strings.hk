@@ -1,6 +1,6 @@
 fun main() I32 {
     let c: [Char;12] = "Hello World!";
-    return c[1] as I32;
+    c[1] as I32
 }
 
 #[

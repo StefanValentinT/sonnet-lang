@@ -1,10 +1,10 @@
 fun get_value() F64 {
-    return 3.7;
+    3.7
 }
 
 fun main() I32 {
     let x: I32 = (get_value() / 2.0) as I32;
-    return x;
+    x
 }
 
 #[

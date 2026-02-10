@@ -1,12 +1,12 @@
 
 fun get_value() I64{
-    return 2207483647_I64;
+    2207483647_I64
 }
 
 fun main() I32 {
     let x: I64 = get_value();
     let a: I32 = (x as I32) +1;
-    return a;
+    a
 }
 
 #[

@@ -5,7 +5,7 @@ fun putchar(n: I32){}
 
 fun main() I32{
     putchar(12);
-    return 0;
+    0
 }
 
 #[

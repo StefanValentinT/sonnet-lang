@@ -1,11 +1,11 @@
 cofun f() I32 {
     let x: I32 = 21*2;
-    return x;
+    x
 }
 
 fun main() I32 {
     let x: I32 = f();
-    return x;
+    x
 }
 #[
 <expect_ret> 42 </expect_ret>    

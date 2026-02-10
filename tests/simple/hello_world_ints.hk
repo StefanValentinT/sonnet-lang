@@ -1,5 +1,3 @@
-extern fun putchar(i: I32);
-extern fun getchar() I32;
 
 fun main() I32{
     putchar(72);   # H
@@ -16,7 +14,7 @@ fun main() I32{
     putchar(33);   # !
     putchar(10);   # \n
 
-    return 0;
+    0
 }
 
 #[

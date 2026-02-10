@@ -3,7 +3,7 @@ fun main() I32 {
 
     print(slice(s));
 
-    return 0;
+    0
 }
 
 #[

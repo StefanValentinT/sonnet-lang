@@ -18,12 +18,6 @@ pub fn parse(tokens: Queue<Token>) -> Program {
 }
 
 fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
-    let extern_fun = if tokens.peek().unwrap() == Token::Keyword("extern".to_string()) {
-        tokens.consume();
-        true
-    } else {
-        false
-    };
     let exec_time = match tokens.remove().unwrap() {
         Token::Keyword(ref s) if s == "fun" => ExecTime::Runtime,
         Token::Keyword(ref s) if s == "cofun" => ExecTime::CompileTime,
@@ -48,20 +42,8 @@ fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
     };
 
     let body = match tokens.peek().unwrap() {
-        Token::OpenBrace => {
-            if extern_fun {
-                panic!("Extern function has a body.")
-            }
-            Some(parse_block(tokens))
-        }
-        Token::Semicolon => {
-            tokens.consume();
-            if !extern_fun {
-                panic!("Not extern function doesn't have a body.")
-            }
-            None
-        }
-        t => panic!("Expected {{ or ; after function declaration, got {:?}", t),
+        Token::OpenBrace => Some(parse_block(tokens)),
+        t => panic!("Expected {{ after function declaration, got {:?}", t),
     };
 
     FunDecl {

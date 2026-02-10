@@ -156,10 +156,20 @@ pub fn gen_tac(program: Program) -> TacProgram {
 fn func_to_tac(func: FunDecl) -> TacFuncDef {
     let mut body = Vec::new();
 
-    if let Some(block) = func.body {
-        let ret_val = block_to_tac(block, &mut body);
+    let block_ret = if let Some(block) = func.body {
+        block_to_tac(block, &mut body)
+    } else {
+        None
+    };
 
-        body.push(TacInstruction::Return(Some(ret_val)));
+    match func.ret_type {
+        Type::Unit => {
+            body.push(TacInstruction::Return(None));
+        }
+        _ => {
+            let ret_val = block_ret.expect("Semantic error: non-Unit function must return a value");
+            body.push(TacInstruction::Return(Some(ret_val)));
+        }
     }
 
     TacFuncDef::Function {
@@ -170,7 +180,7 @@ fn func_to_tac(func: FunDecl) -> TacFuncDef {
     }
 }
 
-fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> TacVal {
+fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> Option<TacVal> {
     let Block::Block(items, final_expr) = block;
 
     for item in items {
@@ -180,7 +190,10 @@ fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> TacVal 
         }
     }
 
-    expr_to_tac(final_expr, instructions)
+    match final_expr.kind {
+        ExprKind::Constant(Const::Unit) => None,
+        _ => Some(expr_to_tac(final_expr, instructions)),
+    }
 }
 
 fn decl_to_tac(decl: Decl, instructions: &mut Vec<TacInstruction>) {

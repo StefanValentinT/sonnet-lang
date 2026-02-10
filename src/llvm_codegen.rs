@@ -132,6 +132,8 @@ pub fn llvm_mini_stdlib() -> String {
     r#"
 declare i32 @puts(i8*)
 
+declare i32 @putchar(i32)
+
 define i32 @print({ i32*, i32 } %s) {
 entry:
   ; extract pointer and length from slice

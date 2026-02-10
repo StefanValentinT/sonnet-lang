@@ -5,7 +5,7 @@ fun set_to_99(p: *I32) {
 fun main() I32 {
     let x: I32 = 0;
     set_to_99(&x);
-    return x;
+    x
 }
 
 #[

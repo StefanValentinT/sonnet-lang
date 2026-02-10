@@ -3,7 +3,7 @@ cofun f() [Char]{
 
     print(s);
 
-    return s;
+    s
     
 }
 
@@ -11,7 +11,7 @@ cofun f() [Char]{
 fun main() I32 {
     print(f());
 
-    return 0;
+    0
 }
 
 #[

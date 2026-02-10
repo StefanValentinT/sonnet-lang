@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ast::ast_type::*;
 use crate::ast::untyped_ast::*;
-use crate::stdlib::builtin_functions;
+use crate::stdlib::*;
 
 #[derive(Clone)]
 struct SymbolEntry {
@@ -18,12 +18,12 @@ pub fn typecheck(program: Program) -> Program {
         Program::Program(funcs) => funcs,
     };
 
-    for (name, fun) in builtin_functions() {
+    for fun in builtin_function_decls() {
         let fun_ty = Type::FunType {
             params: fun.params.iter().map(|(_, t)| t.clone()).collect(),
             ret: Box::new(fun.ret_type.clone()),
         };
-        symbols.insert(name, SymbolEntry { ty: fun_ty });
+        symbols.insert(fun.name, SymbolEntry { ty: fun_ty });
     }
 
     for f in &funcs {

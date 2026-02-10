@@ -1,9 +1,9 @@
 fun wrong() I64{
-    return 12;
+    12
 }
 
 fun main() I32{
-    return wrong();
+wrong()
 }
 
 #[

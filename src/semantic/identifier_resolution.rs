@@ -1,7 +1,7 @@
 use crate::ast::ast_type::Type;
 use crate::ast::untyped_ast::*;
 use crate::gen_names::make_temporary;
-use crate::stdlib::builtin_functions;
+use crate::stdlib::*;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -15,11 +15,11 @@ pub fn identifier_resolution_pass(program: Program) -> Program {
         Program::Program(funcs) => {
             let mut global_map: HashMap<String, MapEntry> = HashMap::new();
 
-            for (name, fun_decl) in builtin_functions() {
+            for name in builtin_function_names() {
                 global_map.insert(
                     name.to_string(),
                     MapEntry {
-                        unique_name: fun_decl.name.clone(),
+                        unique_name: name.clone(),
                         from_current_scope: false,
                     },
                 );

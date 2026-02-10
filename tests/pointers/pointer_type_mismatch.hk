@@ -1,7 +1,7 @@
 fun main() I32 {
     let x: I32 = 1;
     let p: *I64 = &x;
-    return 0;
+    0
 }
 
 #[

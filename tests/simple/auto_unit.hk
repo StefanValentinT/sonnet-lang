@@ -5,13 +5,13 @@ fun something(n: I32){
 
 fun main() I32{
     something(3);
-    return 0;
+ 5
 }
 
 
 #[
 
 <expect_ret>
-0
+5
 </expect_ret>
 ]#

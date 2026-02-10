@@ -3,7 +3,7 @@ fun main() I32 {
     let p1: *I32 = &x;
     let p2: *I64 = p1;
 
-    return 0;
+    0
 }
 
 #[

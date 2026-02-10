@@ -1,9 +1,9 @@
 fun main() I32 {
-    return something();
+something()
 }
 
 fun something() I32 {
-    return 5;
+    5
 }
 
 

@@ -1,7 +1,7 @@
 fun bad() I32{}
 
 fun main() I32{
-    return bad;
+    bad
 }
 
 #[

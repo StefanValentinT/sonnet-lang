@@ -1,6 +1,6 @@
 fun main() I32 {
     let p: *I32 = &(5 + 3);
-    return 0;
+    0
 }
 
 #[
