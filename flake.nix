@@ -25,9 +25,7 @@
             lockFile = ./Cargo.lock;
           };
 
-          # Temporary fake hash — build once to get the real one
-          cargoHash = pkgs.lib.fakeSha256;
-        };
+                 };
 
         apps.default = flake-utils.lib.mkApp {
           drv = self.packages.${system}.default;
