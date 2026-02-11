@@ -2,20 +2,26 @@
 
 This is the _Haiku Compiler_.
 
-# Roadmap to 0.1
+Installing it is easy with nix, the best package manager (and linux distro) in the world.
+Just run the following command in your terminal to get the latest version:
+```
+nix profile add github:StefanValentinT/haiku-lang
+```
 
-Soon I want to release 0.1. That will be the first release. At this point the language will not be stable,
+# Roadmap to 0.2
+
+Soon I want to release 0.2. That will be the first (real, not just for testing) release. At this point the language will not be stable,
 but it will have most of its features and be usable for other people. Also I want to write raylib-bindings and make a
 little game to prove the capabilities of Haiku. Until the release the following features have to be implemented.
 
-[ ] Strings and Vectors,
-[ ] First class functions,
-[ ] Module and imports,
-[ ] Project based compiler,
-[ ] a little stdlib,
-[ ] totality checker,
-[ ] Algebraic datatypes,
-[ ] memory allocation
+- [ ] Strings and Vectors,
+- [ ] First class functions,
+- [ ] Module and imports,
+- [ ] Project based compiler,
+- [ ] a little stdlib,
+- [ ] totality checker,
+- [ ] Algebraic datatypes,
+-[ ] memory allocation
 
 # About Haiku
 
