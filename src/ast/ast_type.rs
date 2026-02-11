@@ -7,11 +7,24 @@ pub enum Type {
 
     Unit,
 
-    FunType { params: Vec<Type>, ret: Box<Type> },
-    Pointer { referenced: Box<Type> },
-    Array { element_type: Box<Type>, size: i32 },
-    Slice { element_type: Box<Type> },
+    FunType {
+        params: Vec<Option<Type>>,
+        ret: Box<Option<Type>>,
+    },
+    Pointer {
+        referenced: Box<Type>,
+    },
+    Array {
+        element_type: Box<Type>,
+        size: i32,
+    },
+    Slice {
+        element_type: Box<Type>,
+    },
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeVar(usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExecTime {

@@ -12,11 +12,11 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
             name: "print".to_string(),
             params: vec![(
                 "s".to_string(),
-                Type::Slice {
+                Some(Type::Slice {
                     element_type: Box::new(Type::Char),
-                },
+                }),
             )],
-            ret_type: Type::I32,
+            ret_type: Some(Type::I32),
             body: None,
             exec_time: ExecTime::Runtime,
         },
@@ -26,8 +26,8 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
         "putchar".to_string(),
         FunDecl {
             name: "putchar".to_string(),
-            params: vec![("c".to_string(), Type::I32)],
-            ret_type: Type::Unit,
+            params: vec![("c".to_string(), Some(Type::I32))],
+            ret_type: Some(Type::Unit),
             body: None,
             exec_time: ExecTime::Runtime,
         },
@@ -39,11 +39,11 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
             name: "puts".to_string(),
             params: vec![(
                 "s".to_string(),
-                Type::Slice {
+                Some(Type::Slice {
                     element_type: Box::new(Type::Char),
-                },
+                }),
             )],
-            ret_type: Type::I32,
+            ret_type: Some(Type::I32),
             body: None,
             exec_time: ExecTime::Runtime,
         },

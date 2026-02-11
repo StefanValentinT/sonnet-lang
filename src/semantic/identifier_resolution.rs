@@ -115,7 +115,7 @@ fn resolve_var_decl(var_decl: VarDecl, identifier_map: &mut HashMap<String, MapE
 fn resolve_fun_decl(decl: FunDecl, identifier_map: &mut HashMap<String, MapEntry>) -> FunDecl {
     let mut local_map = copy_identifier_map(identifier_map);
 
-    let new_params: Vec<(String, Type)> = decl
+    let new_params: Vec<(String, Option<Type>)> = decl
         .params
         .into_iter()
         .map(|(pname, ptype)| {

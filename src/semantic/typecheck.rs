@@ -70,12 +70,17 @@ fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
         );
     }
 
-    let typed_params: Vec<(String, Type)> = decl
+    let typed_params: Vec<(String, Option<Type>)> = decl
         .params
         .into_iter()
         .zip(param_types.into_iter())
         .map(|((name, _), ty)| {
-            locals.insert(name.clone(), SymbolEntry { ty: ty.clone() });
+            locals.insert(
+                name.clone(),
+                SymbolEntry {
+                    ty: ty.clone().expect("Function param type missing"),
+                },
+            );
             (name, ty)
         })
         .collect();
@@ -84,7 +89,7 @@ fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
         let typed_block = typecheck_block(&b, &mut locals);
 
         let Block::Block(_, last_expr) = &typed_block;
-        if last_expr.ty != Some(ret_ty.clone()) {
+        if last_expr.ty != ret_ty.clone() {
             panic!(
                 "Function {} expected return type {:?}, got {:?}",
                 decl.name, ret_ty, last_expr.ty
@@ -295,7 +300,7 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
             let typed_args: Vec<_> = args.iter().map(|a| typecheck_expr(a, symbols)).collect();
 
             for (arg, param_ty) in typed_args.iter().zip(params.iter()) {
-                if arg.ty != Some(param_ty.clone()) {
+                if arg.ty != param_ty.clone() {
                     panic!(
                         "Argument type mismatch in call to {}: expected {:?}, got {:?}",
                         name, param_ty, arg.ty
@@ -304,7 +309,7 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
             }
 
             Expr {
-                ty: Some(ret),
+                ty: ret,
                 kind: ExprKind::FunctionCall(name.clone(), typed_args),
             }
         }

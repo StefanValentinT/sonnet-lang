@@ -162,7 +162,11 @@ fn func_to_tac(func: FunDecl) -> TacFuncDef {
         None
     };
 
-    match func.ret_type {
+    match func
+        .ret_type
+        .clone()
+        .expect("The assumption that everything is well-typed has been proven in the typechecker.")
+    {
         Type::Unit => {
             body.push(TacInstruction::Return(None));
         }
@@ -174,8 +178,14 @@ fn func_to_tac(func: FunDecl) -> TacFuncDef {
 
     TacFuncDef::Function {
         name: func.name,
-        params: func.params,
-        ret_type: func.ret_type,
+        params: func
+            .params
+            .into_iter()
+            .map(|(name, ty)| (name, ty.expect("The assumption that everything is well-typed has been proven in the typechecker.")))
+            .collect(),
+        ret_type: func.ret_type.expect(
+            "The assumption that everything is well-typed has been proven in the typechecker.",
+        ),
         body,
     }
 }

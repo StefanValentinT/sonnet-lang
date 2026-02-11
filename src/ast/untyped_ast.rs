@@ -25,9 +25,9 @@ pub enum Initializer {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunDecl {
     pub name: String,
-    pub params: Vec<(String, Type)>,
+    pub params: Vec<(String, Option<Type>)>,
     pub body: Option<Block>,
-    pub ret_type: Type,
+    pub ret_type: Option<Type>,
     pub exec_time: ExecTime,
 }
 

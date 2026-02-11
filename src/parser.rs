@@ -50,12 +50,12 @@ fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
         name,
         params,
         body,
-        ret_type,
+        ret_type: Some(ret_type),
         exec_time,
     }
 }
 
-fn parse_param_list(tokens: &mut Queue<Token>) -> Vec<(String, Type)> {
+fn parse_param_list(tokens: &mut Queue<Token>) -> Vec<(String, Option<Type>)> {
     match tokens.peek().unwrap() {
         Token::CloseParen => Vec::new(),
         _ => {
@@ -69,7 +69,7 @@ fn parse_param_list(tokens: &mut Queue<Token>) -> Vec<(String, Type)> {
 
                 let ty = parse_type(tokens);
 
-                params.push((name, ty));
+                params.push((name, Some(ty)));
 
                 if tokens.peek().unwrap() == Token::Comma {
                     tokens.consume();
