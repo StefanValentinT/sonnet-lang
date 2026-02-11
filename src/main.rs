@@ -32,26 +32,19 @@ macro_rules! vprintln {
     }
 }
 
-const DEV_BUILD: &str = env!("DEV_BUILD");
 static mut VERBOSE: bool = false;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     Run(RunArgs),
     Lsp,
-}
-
-#[derive(Parser, Debug)]
-#[command(
-    author,
-    version,
-    about,
-    subcommand_required = true,
-    arg_required_else_help = true
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
 }
 
 #[derive(Parser, Debug)]
@@ -147,13 +140,16 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Lsp => {
+        Some(Commands::Lsp) => {
             lsp::run_language_server().await;
-            return;
         }
 
-        Commands::Run(args) => {
+        Some(Commands::Run(args)) => {
             run_command(args).await;
+        }
+
+        None => {
+            start_repl().await;
         }
     }
 }
@@ -174,7 +170,7 @@ async fn run_command(args: RunArgs) {
 ~                                    ~
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"#
     );
-    println!("{}", DEV_BUILD);
+    println!("InDev Version 0.1.3 of the Haiku Programming Language Compiler");
 
     let filename = match (args.single_file, args.filename.as_ref()) {
         (true, Some(f)) => f.clone(),
@@ -253,4 +249,9 @@ async fn run_command(args: RunArgs) {
 
         std::process::exit(output.status.code().unwrap_or(1));
     }
+}
+
+async fn start_repl() {
+    println!("Starting REPL...");
+    std::process::exit(0);
 }
