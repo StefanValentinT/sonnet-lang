@@ -262,7 +262,7 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
             let r_conv = convert_by_assignment(r, &(l.ty.clone().unwrap()));
 
             Expr {
-                ty: l.ty.clone(),
+                ty: Some(Type::Unit),
                 kind: ExprKind::Assign(Box::new(l), Box::new(r_conv)),
             }
         }

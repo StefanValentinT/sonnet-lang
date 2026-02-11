@@ -16,7 +16,7 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
                     element_type: Box::new(Type::Char),
                 }),
             )],
-            ret_type: Some(Type::I32),
+            ret_type: Some(Type::Unit),
             body: None,
             exec_time: ExecTime::Runtime,
         },
