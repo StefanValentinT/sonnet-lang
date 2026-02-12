@@ -1,5 +1,5 @@
 
-fun output_something(){
+fun output_something() Unit{
     putchar(72);
 }
 

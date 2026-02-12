@@ -99,11 +99,6 @@ pub enum TacInstruction {
         dest: TacVal,
         offset: i32,
     },
-    SetField {
-        struct_var: TacVal,
-        field_index: i32,
-        src: TacVal,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -214,7 +209,7 @@ fn decl_to_tac(decl: Decl, instructions: &mut Vec<TacInstruction>) {
 
             instructions.push(TacInstruction::Copy {
                 src: val,
-                dest: TacVal::Var(v.name, v.var_type),
+                dest: TacVal::Var(v.name, v.var_type.expect("Checked in typechecker.")),
             });
         }
     }
@@ -488,7 +483,6 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
 
             let element_type = match array_val_type(&array_val) {
                 Type::Array { element_type, .. } => element_type,
-                Type::Slice { element_type } => element_type,
                 _ => unreachable!("Expected array or slice"),
             };
 
@@ -496,25 +490,6 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
 
             let base_ptr = match array_val_type(&array_val) {
                 Type::Array { .. } => array_val.clone(),
-                Type::Slice { .. } => {
-                    let ptr = TacVal::Var(
-                        make_temporary(),
-                        Type::Pointer {
-                            referenced: element_type.clone(),
-                        },
-                    );
-                    instructions.push(TacInstruction::Load {
-                        src_ptr: TacVal::Var(
-                            match &array_val {
-                                TacVal::Var(name, _) => name.clone(),
-                                _ => panic!("Slice must be a var"),
-                            },
-                            array_val_type(&array_val),
-                        ),
-                        dest: ptr.clone(),
-                    });
-                    ptr
-                }
                 _ => unreachable!("Expected array or slice"),
             };
 
@@ -543,81 +518,6 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
                     dst
                 }
             }
-        }
-
-        ExprKind::SliceFromArray(inner) => {
-            let array_val = expr_to_tac(*inner, instructions);
-
-            let (element_type, length_val) = match array_val_type(&array_val) {
-                Type::Array { element_type, size } => (element_type, Some(size)),
-                Type::Slice { element_type } => (element_type, None),
-                _ => panic!("SliceFromArray expects Array or Slice"),
-            };
-
-            let slice_ty = expr.ty.clone();
-            let slice_val = TacVal::Var(make_temporary(), slice_ty.unwrap());
-
-            let ptr_field = TacVal::Var(
-                make_temporary(),
-                Type::Pointer {
-                    referenced: element_type.clone(),
-                },
-            );
-            let len_field = TacVal::Var(make_temporary(), Type::I32);
-
-            instructions.push(TacInstruction::GetAddress {
-                src: array_val.clone(),
-                dest: ptr_field.clone(),
-            });
-
-            let len_src = if let Some(size) = length_val {
-                TacVal::Constant(TacConst::I32(size))
-            } else {
-                TacVal::Var(
-                    match &array_val {
-                        TacVal::Var(name, _) => name.clone(),
-                        _ => panic!("Slice must be a var"),
-                    },
-                    Type::I32,
-                )
-            };
-
-            instructions.push(TacInstruction::Copy {
-                src: len_src,
-                dest: len_field.clone(),
-            });
-
-            instructions.push(TacInstruction::SetField {
-                struct_var: slice_val.clone(),
-                field_index: 0,
-                src: ptr_field,
-            });
-            instructions.push(TacInstruction::SetField {
-                struct_var: slice_val.clone(),
-                field_index: 1,
-                src: len_field,
-            });
-
-            slice_val
-        }
-
-        ExprKind::SliceLen(slice_expr) => {
-            let slice_val = expr_to_tac(*slice_expr, instructions);
-
-            let len_val = TacVal::Var(make_temporary(), Type::I32);
-
-            instructions.push(TacInstruction::Load {
-                src_ptr: TacVal::Var(
-                    match &slice_val {
-                        TacVal::Var(name, _) => name.clone(),
-                        _ => panic!("Slice must be a var"),
-                    },
-                    array_val_type(&slice_val),
-                ),
-                dest: len_val.clone(),
-            });
-
-            len_val
         }
     }
 }
@@ -762,7 +662,6 @@ fn sizeof(ty: &Type) -> i32 {
         Type::Char => 4,
         Type::Pointer { .. } => 8,
         Type::Array { element_type, size } => size * sizeof(element_type),
-        Type::Slice { .. } => 16,
         _ => panic!("Unsupported type for sizeof"),
     }
 }

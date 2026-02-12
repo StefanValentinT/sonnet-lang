@@ -286,21 +286,6 @@ fn resolve_expr(expr: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> E
                 kind: ExprKind::ArrayIndex(Box::new(array_resolved), Box::new(index_resolved)),
             }
         }
-        ExprKind::SliceFromArray(expr) => {
-            let resolved = resolve_expr(*expr, identifier_map);
-            Expr {
-                ty,
-                kind: ExprKind::SliceFromArray(Box::new(resolved)),
-            }
-        }
-
-        ExprKind::SliceLen(expr) => {
-            let resolved = resolve_expr(*expr, identifier_map);
-            Expr {
-                ty,
-                kind: ExprKind::SliceLen(Box::new(resolved)),
-            }
-        }
     }
 }
 

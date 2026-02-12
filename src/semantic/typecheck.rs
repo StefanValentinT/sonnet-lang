@@ -137,7 +137,7 @@ fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
                 Initializer::InitExpr(expr) => expr,
             };
             let init = typecheck_expr(&init_expr, symbols);
-            if init.ty != Some(v.var_type.clone()) {
+            if init.ty != v.var_type.clone() {
                 panic!(
                     "Type mismatch in variable '{}': expected {:?}, got {:?}",
                     v.name, v.var_type, init.ty
@@ -147,7 +147,7 @@ fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
             symbols.insert(
                 v.name.clone(),
                 SymbolEntry {
-                    ty: v.var_type.clone(),
+                    ty: v.var_type.clone().unwrap(),
                 },
             );
 
@@ -397,40 +397,12 @@ fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
 
             let element_ty = match &typed_array.ty {
                 Some(Type::Array { element_type, .. }) => (**element_type).clone(),
-                Some(Type::Slice { element_type }) => (**element_type).clone(),
                 other => panic!("Cannot index non-array/slice type {:?}", other),
             };
 
             Expr {
                 ty: Some(element_ty),
                 kind: ExprKind::ArrayIndex(Box::new(typed_array), Box::new(typed_index)),
-            }
-        }
-        ExprKind::SliceFromArray(inner) => {
-            let typed_inner = typecheck_expr(inner, symbols);
-
-            let element_ty = match &typed_inner.ty {
-                Some(Type::Array { element_type, .. }) => (**element_type).clone(),
-                Some(Type::Slice { element_type }) => (**element_type).clone(),
-                other => panic!("slice() expects an array or slice, got {:?}", other),
-            };
-
-            Expr {
-                ty: Some(Type::Slice {
-                    element_type: Box::new(element_ty),
-                }),
-                kind: ExprKind::SliceFromArray(Box::new(typed_inner)),
-            }
-        }
-        ExprKind::SliceLen(inner) => {
-            let typed_inner = typecheck_expr(inner, symbols);
-
-            match typed_inner.ty {
-                Some(Type::Slice { .. }) => Expr {
-                    ty: Some(Type::I32),
-                    kind: ExprKind::SliceLen(Box::new(typed_inner)),
-                },
-                other => panic!("len() expects a slice, got {:?}", other),
             }
         }
     }

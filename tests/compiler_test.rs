@@ -82,8 +82,7 @@ fn is_failure(res: &CompilerResult) -> bool {
 fn run_haiku(path: &Path) -> CompilerResult {
     let abs = path.canonicalize().unwrap();
 
-    let exe = env!("CARGO_BIN_EXE_haiku"); // <-- uses the binary from the same Cargo build
-
+    let exe = env!("CARGO_BIN_EXE_haiku");
     let output = std::process::Command::new(exe)
         .arg("run")
         .arg("--single-file")

@@ -27,7 +27,7 @@ pub fn emit_llvm(program: TacProgram) -> String {
         out.push('\n');
     }
 
-    out.push_str(&llvm_mini_stdlib());
+    out.push_str(&llvm_c_stdlib());
 
     out
 }
@@ -128,58 +128,28 @@ fn emit_function(
     out.push_str("}\n");
     out
 }
-pub fn llvm_mini_stdlib() -> String {
+fn llvm_c_stdlib() -> String {
     r#"
-declare i32 @puts(i8*)
-
 declare i32 @putchar(i32)
+declare i32 @getchar()
 
-define i32 @print({ i32*, i32 } %s) {
-entry:
-  ; extract pointer and length from slice
-  %ptr_i32 = extractvalue { i32*, i32 } %s, 0
-  %len_i32 = extractvalue { i32*, i32 } %s, 1
-  %len = sext i32 %len_i32 to i64
+declare i32 @printf(i8*, ...)
+declare i32 @snprintf(i8*, i64, i8*, ...)
+declare i8* @malloc(i64)
+declare void @free(i8*)
 
-  ; allocate temporary buffer and index
-  %buf = alloca [1024 x i8]
-  %i = alloca i64
-  store i64 0, i64* %i
-  br label %loop
+%Slice = type { i8*, i64 }
 
-loop:
-  %idx = load i64, i64* %i
-  %cmp = icmp ult i64 %idx, %len
-  br i1 %cmp, label %body, label %end
+declare %Slice @show_i32(i32)
+declare %Slice @show_i64(i64)
+declare %Slice @show_f64(double)
+declare %Slice @show_char(i32)
+declare %Slice @show_unit()
 
-body:
-  ; load i32 character
-  %char32_ptr = getelementptr inbounds i32, i32* %ptr_i32, i64 %idx
-  %c32 = load i32, i32* %char32_ptr
-  %c8 = trunc i32 %c32 to i8
-
-  ; store in buffer
-  %buf_ptr = getelementptr [1024 x i8], [1024 x i8]* %buf, i64 0, i64 %idx
-  store i8 %c8, i8* %buf_ptr
-
-  ; increment
-  %next = add i64 %idx, 1
-  store i64 %next, i64* %i
-  br label %loop
-
-end:
-  ; null-terminate
-  %buf_end = getelementptr [1024 x i8], [1024 x i8]* %buf, i64 0, i64 %len
-  store i8 0, i8* %buf_end
-
-  ; call puts
-  %buf_ptr0 = getelementptr [1024 x i8], [1024 x i8]* %buf, i64 0, i64 0
-  call i32 @puts(i8* %buf_ptr0)
-  ret i32 0
-}
 "#
     .into()
 }
+
 fn emit_instr(
     instr: &TacInstruction,
     defined: &HashSet<String>,
@@ -246,79 +216,127 @@ fn emit_instr(
             src2,
             dest,
         } => {
-            let (a_load, a, ty) = load_val(src1, reg_counter);
-            let (b_load, b, _) = load_val(src2, reg_counter);
+            let (a_load, a_val, ty) = load_val(src1, reg_counter);
+            let (b_load, b_val, _) = load_val(src2, reg_counter);
             let r = fresh_reg(reg_counter);
 
-            if matches!(op, TacBinaryOp::Divide | TacBinaryOp::Remainder) {
-                match src2 {
-                    TacVal::Constant(TacConst::I32(0))
-                    | TacVal::Constant(TacConst::I64(0))
-                    | TacVal::Constant(TacConst::F64(0.0)) => {
-                        panic!("Compile-time error: division or remainder by zero");
-                    }
-                    _ => {}
-                }
-            }
+            let mut ir = String::new();
+            ir.push_str(&a_load);
+            ir.push_str(&b_load);
 
-            let ir = match op {
-                TacBinaryOp::Add => {
+            match op {
+                TacBinaryOp::Add | TacBinaryOp::Subtract | TacBinaryOp::Multiply => {
                     if ty == "double" {
-                        format!("fadd double {}, {}", a, b)
+                        let op_name = match op {
+                            TacBinaryOp::Add => "fadd",
+                            TacBinaryOp::Subtract => "fsub",
+                            TacBinaryOp::Multiply => "fmul",
+                            _ => unreachable!(),
+                        };
+                        ir.push_str(&format!(
+                            "  {} = {} double {}, {}\n  store double {}, double* %{}\n",
+                            r,
+                            op_name,
+                            a_val,
+                            b_val,
+                            r,
+                            var_name(dest)
+                        ));
                     } else {
-                        format!("add {} {}, {}", ty, a, b)
-                    }
-                }
-                TacBinaryOp::Subtract => {
-                    if ty == "double" {
-                        format!("fsub double {}, {}", a, b)
-                    } else {
-                        format!("sub {} {}, {}", ty, a, b)
-                    }
-                }
-                TacBinaryOp::Multiply => {
-                    if ty == "double" {
-                        format!("fmul double {}, {}", a, b)
-                    } else {
-                        format!("mul {} {}, {}", ty, a, b)
-                    }
-                }
-                TacBinaryOp::Divide => {
-                    if ty == "double" {
-                        format!("fdiv double {}, {}", a, b)
-                    } else {
-                        let check = fresh_reg(reg_counter);
-                        let ok_label = format!("div_ok{}", reg_counter);
-                        let zero_label = format!("div_zero{}", reg_counter);
+                        let intrinsic_ty = if ty == "i64" {
+                            match op {
+                                TacBinaryOp::Add => "llvm.sadd.with.overflow.i64",
+                                TacBinaryOp::Subtract => "llvm.ssub.with.overflow.i64",
+                                TacBinaryOp::Multiply => "llvm.smul.with.overflow.i64",
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            match op {
+                                TacBinaryOp::Add => "llvm.sadd.with.overflow.i32",
+                                TacBinaryOp::Subtract => "llvm.ssub.with.overflow.i32",
+                                TacBinaryOp::Multiply => "llvm.smul.with.overflow.i32",
+                                _ => unreachable!(),
+                            }
+                        };
 
-                        return format!(
-                            "{}{}  {} = icmp eq {} {}, 0\n  br i1 {}, label %{}, label %{}\n{}:\n  call void @llvm.trap()\n  unreachable\n{}:\n  {} = sdiv {} {}, {}\n  store {} {}, {}* %{}\n",
-                            a_load,
-                            b_load,
-                            check,
+                        let res_struct = fresh_reg(reg_counter);
+                        let res_val = fresh_reg(reg_counter);
+                        let overflow = fresh_reg(reg_counter);
+                        let ok_label = format!("ok{}", reg_counter);
+                        let trap_label = format!("trap{}", reg_counter);
+
+                        ir.push_str(&format!(
+                            "  {} = call {{ {}, i1 }} @{}({} {}, {} {})\n\
+             {} = extractvalue {{ {}, i1 }} {}, 0\n\
+             {} = extractvalue {{ {}, i1 }} {}, 1\n\
+             br i1 {}, label %{}, label %{}\n",
+                            res_struct,
                             ty,
-                            b,
-                            check,
-                            zero_label,
+                            intrinsic_ty,
+                            ty,
+                            a_val,
+                            ty,
+                            b_val,
+                            res_val,
+                            ty,
+                            res_struct,
+                            overflow,
+                            ty,
+                            res_struct,
+                            overflow,
+                            trap_label,
+                            ok_label
+                        ));
+
+                        ir.push_str(&format!(
+                            "{}:\n  call void @llvm.trap()\n  unreachable\n",
+                            trap_label
+                        ));
+
+                        ir.push_str(&format!(
+                            "{}:\n  store {} {}, {}* %{}\n",
                             ok_label,
-                            zero_label,
-                            ok_label,
+                            ty,
+                            res_val,
+                            ty,
+                            var_name(dest)
+                        ));
+                    }
+                }
+                TacBinaryOp::Divide | TacBinaryOp::Remainder => {
+                    if ty == "double" {
+                        let op_name = match op {
+                            TacBinaryOp::Divide => "fdiv",
+                            TacBinaryOp::Remainder => "frem",
+                            _ => unreachable!(),
+                        };
+                        ir.push_str(&format!(
+                            "  {} = {} double {}, {}\n  store double {}, double* %{}\n",
+                            r,
+                            op_name,
+                            a_val,
+                            b_val,
+                            r,
+                            var_name(dest)
+                        ));
+                    } else {
+                        let op_name = match op {
+                            TacBinaryOp::Divide => "sdiv nsw",
+                            TacBinaryOp::Remainder => "srem",
+                            _ => unreachable!(),
+                        };
+                        ir.push_str(&format!(
+                            "  {} = {} {} {}, {}\n  store {} {}, {}* %{}\n",
+                            r,
+                            op_name,
+                            ty,
+                            a_val,
+                            b_val,
+                            ty,
                             r,
                             ty,
-                            a,
-                            b,
-                            ty,
-                            r,
-                            ty,
-                            var_name(dest),
-                        );
-                    }
-                }
-                TacBinaryOp::Remainder => {
-                    if ty == "double" {
-                        panic!("Remainder not supported for floating-point types in LLVM");
-                    } else {
-                        format!("srem {} {}, {}", ty, a, b)
+                            var_name(dest)
+                        ));
                     }
                 }
 
@@ -329,7 +347,7 @@ fn emit_instr(
                 | TacBinaryOp::GreaterThan
                 | TacBinaryOp::GreaterOrEqual => {
                     let r_icmp = fresh_reg(reg_counter);
-                    let cmp_ir = if ty == "double" {
+                    let cmp_instr = if ty == "double" {
                         let pred = match op {
                             TacBinaryOp::Equal => "oeq",
                             TacBinaryOp::NotEqual => "one",
@@ -339,7 +357,7 @@ fn emit_instr(
                             TacBinaryOp::GreaterOrEqual => "oge",
                             _ => unreachable!(),
                         };
-                        format!("{} = fcmp {} double {}, {}", r_icmp, pred, a, b)
+                        format!("{} = fcmp {} double {}, {}", r_icmp, pred, a_val, b_val)
                     } else {
                         let pred = match op {
                             TacBinaryOp::Equal => "eq",
@@ -350,33 +368,21 @@ fn emit_instr(
                             TacBinaryOp::GreaterOrEqual => "sge",
                             _ => unreachable!(),
                         };
-                        format!("{} = icmp {} {} {}, {}", r_icmp, pred, ty, a, b)
+                        format!("{} = icmp {} {} {}, {}", r_icmp, pred, ty, a_val, b_val)
                     };
                     let zext = fresh_reg(reg_counter);
-                    return format!(
-                        "{}{}  {}\n  {} = zext i1 {} to i32\n  store i32 {}, i32* %{}\n",
-                        a_load,
-                        b_load,
-                        cmp_ir,
+                    ir.push_str(&format!(
+                        "  {}\n  {} = zext i1 {} to i32\n  store i32 {}, i32* %{}\n",
+                        cmp_instr,
                         zext,
                         r_icmp,
                         zext,
                         var_name(dest)
-                    );
+                    ));
                 }
-            };
+            }
 
-            format!(
-                "{}{}  {} = {}\n  store {} {}, {}* %{}\n",
-                a_load,
-                b_load,
-                r,
-                ir,
-                ty,
-                r,
-                ty,
-                var_name(dest)
-            )
+            ir
         }
         TacInstruction::Jump { target } => format!("  br label %{}\n", target),
         TacInstruction::JumpIfZero { condition, target } => {
@@ -665,39 +671,6 @@ fn emit_instr(
                 elem_ptr
             )
         }
-        TacInstruction::SetField {
-            struct_var,
-            field_index,
-            src,
-        } => {
-            let struct_name = match struct_var {
-                TacVal::Var(name, _) => name,
-                _ => panic!("SetField struct_var must be a variable"),
-            };
-
-            let (load, val, val_ty) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
-
-            format!(
-                "{}  {} = getelementptr inbounds {}, {}* %{}, i32 0, i32 {}\n  store {} {}, {}* {}\n",
-                load,
-                r,
-                llvm_type(&match struct_var {
-                    TacVal::Var(_, t) => t.clone(),
-                    _ => unreachable!(),
-                }),
-                llvm_type(&match struct_var {
-                    TacVal::Var(_, t) => t.clone(),
-                    _ => unreachable!(),
-                }),
-                struct_name,
-                field_index,
-                val_ty,
-                val,
-                val_ty,
-                r
-            )
-        }
     }
 }
 
@@ -730,10 +703,6 @@ fn llvm_type(ty: &Type) -> String {
         Type::Pointer { referenced } => format!("{}*", llvm_type(referenced)),
         Type::Array { element_type, size } => format!("[{} x {}]", size, llvm_type(element_type)),
         Type::FunType { .. } => unreachable!("Function types are not first-class in LLVM"),
-        Type::Slice { element_type } => {
-            let elem = llvm_type(element_type);
-            format!("{{ {}*, i32 }}", elem)
-        }
     }
 }
 

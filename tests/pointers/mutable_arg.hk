@@ -1,4 +1,4 @@
-fun set_to_99(p: *I32) {
+fun set_to_99(p: *I32) Unit {
     *p = 99;
 }
 

@@ -1,0 +1,29 @@
+fun make_slice() [I32] {
+    slice([10, 20, 30])
+}
+fun sum_slice(s: [I32]) I32 {
+    let a: I32 = s[0];
+    let b: I32 = s[1];
+    let c: I32 = s[2];
+    a + b + c
+}
+
+fun modify_slice(s: [I32]) Unit {
+    s[0] = 111;
+    s[1] = 222;
+    s[2] = 333;
+}
+
+fun main() I32 {
+    let s = make_slice();
+    let sum1: I32 = sum_slice(s);
+    modify_slice(s);
+    let sum2: I32 = sum_slice(s);
+    sum1 + sum2
+}
+
+#[
+<expect_ret>
+726
+</expect_ret>
+]#

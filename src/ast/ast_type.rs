@@ -18,9 +18,6 @@ pub enum Type {
         element_type: Box<Type>,
         size: i32,
     },
-    Slice {
-        element_type: Box<Type>,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

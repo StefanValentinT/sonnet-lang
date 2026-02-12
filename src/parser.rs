@@ -37,8 +37,8 @@ fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
     expect(Token::CloseParen, tokens);
 
     let ret_type = match tokens.peek().unwrap() {
-        Token::Semicolon | Token::OpenBrace => Type::Unit,
-        _ => parse_type(tokens),
+        Token::OpenBrace => None,
+        _ => Some(parse_type(tokens)),
     };
 
     let body = match tokens.peek().unwrap() {
@@ -50,7 +50,7 @@ fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
         name,
         params,
         body,
-        ret_type: Some(ret_type),
+        ret_type: ret_type,
         exec_time,
     }
 }
@@ -65,12 +65,14 @@ fn parse_param_list(tokens: &mut Queue<Token>) -> Vec<(String, Option<Type>)> {
                     Token::Identifier(n) => n,
                     t => panic!("Expected parameter name, got {:?}", t),
                 };
-                expect(Token::Colon, tokens);
+                let ty = if tokens.peek().unwrap() == Token::Colon {
+                    tokens.consume();
+                    Some(parse_type(tokens))
+                } else {
+                    None
+                };
 
-                let ty = parse_type(tokens);
-
-                params.push((name, Some(ty)));
-
+                params.push((name, ty));
                 if tokens.peek().unwrap() == Token::Comma {
                     tokens.consume();
                 } else {
@@ -125,12 +127,6 @@ fn parse_type(tokens: &mut Queue<Token>) -> Type {
                         size: len as i32,
                     }
                 }
-                Token::CloseBracket => {
-                    tokens.consume();
-                    Type::Slice {
-                        element_type: Box::new(element_type),
-                    }
-                }
                 t => panic!("Expected ; or ] after array type, got {:?}", t),
             }
         }
@@ -183,12 +179,16 @@ fn parse_declaration(tokens: &mut Queue<Token>) -> Decl {
         t => panic!("Expected variable name, got {:?}", t),
     };
 
-    expect(Token::Colon, tokens);
-    let var_type = parse_type(tokens);
+    let var_type = if tokens.peek().unwrap() == Token::Colon {
+        tokens.consume();
+        Some(parse_type(tokens))
+    } else {
+        None
+    };
 
     expect(Token::Assign, tokens);
     let mut init_expr = parse_expr(tokens, 0);
-    init_expr.ty = Some(var_type.clone());
+    init_expr.ty = var_type.clone();
     let initializer = Initializer::InitExpr(init_expr);
 
     expect(Token::Semicolon, tokens);
@@ -301,30 +301,9 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
                 tokens.consume();
                 let args = parse_argument_list(tokens);
                 expect(Token::CloseParen, tokens);
-
-                if name == "slice" {
-                    if args.len() != 1 {
-                        panic!("slice() expects exactly one argument");
-                    }
-
-                    Expr {
-                        ty: None,
-                        kind: ExprKind::SliceFromArray(Box::new(args.into_iter().next().unwrap())),
-                    }
-                } else if name == "len" {
-                    if args.len() != 1 {
-                        panic!("len() expects exactly one argument");
-                    }
-
-                    Expr {
-                        ty: None,
-                        kind: ExprKind::SliceLen(Box::new(args.into_iter().next().unwrap())),
-                    }
-                } else {
-                    Expr {
-                        ty: None,
-                        kind: ExprKind::FunctionCall(name, args),
-                    }
+                Expr {
+                    ty: None,
+                    kind: ExprKind::FunctionCall(name, args),
                 }
             } else {
                 Expr {

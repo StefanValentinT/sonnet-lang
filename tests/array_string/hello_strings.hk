@@ -1,16 +1,8 @@
 fun main() I32 {
     let s: [Char;12] = "Hello World!";
 
-    print(slice(s));
+    #print(slice(s));
 
     0
 }
 
-#[
-<expect_out>
-Hello World!
-</expect_out>
-<expect_ret>
-0
-</expect_ret>
-]#

@@ -107,7 +107,9 @@ pub fn compile_ir(input_path: &str, asm_text: &str, object_only: bool) -> String
     vprintln!("LLVM IR written to '{:?}'", llvm_file);
 
     let mut cmd = Command::new("cc");
-    cmd.arg(&llvm_file).stderr(Stdio::piped());
+    cmd.arg(&llvm_file)
+        .arg("src/runtime/runtime.c")
+        .stderr(Stdio::piped());
     if object_only {
         cmd.arg("-c");
     }
