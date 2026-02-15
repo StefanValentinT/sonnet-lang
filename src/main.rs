@@ -160,20 +160,6 @@ async fn run_command(args: RunArgs) {
     unsafe {
         VERBOSE = args.verbose;
     }
-    println!(
-        r#"
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-~                                    ~
-~  _   _           _   _             ~
-~ | | | |   __ _  (_) | | __  _   _  ~
-~ | |_| |  / _` | | | | |/ / | | | | ~
-~ |  _  | | (_| | | | |   <  | |_| | ~
-~ |_| |_|  \__,_| |_| |_|\_\  \__,_| ~
-~                                    ~
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"#
-    );
-    println!("InDev Version 0.1.3 of the Haiku Programming Language Compiler");
-
     let filename = match (args.single_file, args.filename.as_ref()) {
         (true, Some(f)) => f.clone(),
 
@@ -254,6 +240,20 @@ async fn run_command(args: RunArgs) {
 }
 
 async fn start_repl() {
+    println!(
+        r#"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~                                    ~
+~  _   _           _   _             ~
+~ | | | |   __ _  (_) | | __  _   _  ~
+~ | |_| |  / _` | | | | |/ / | | | | ~
+~ |  _  | | (_| | | | |   <  | |_| | ~
+~ |_| |_|  \__,_| |_| |_|\_\  \__,_| ~
+~                                    ~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"#
+    );
+    println!("InDev Version 0.1.3 of the Haiku Programming Language Compiler");
+
     println!("Starting REPL...");
     std::process::exit(0);
 }

@@ -1,7 +1,5 @@
-use crate::ast::ast_type::Const;
 use crate::ast::untyped_ast::*;
 use crate::{
-    ast::ast_type::*,
     lexer::Token,
     queue::{IsQueue, Queue},
 };
@@ -86,7 +84,14 @@ fn parse_param_list(tokens: &mut Queue<Token>) -> Vec<(String, Option<Type>)> {
 
 fn parse_type(tokens: &mut Queue<Token>) -> Type {
     match tokens.remove().unwrap() {
-        Token::Star => {
+        Token::Identifier(name) => {
+            if name.chars().next().unwrap().is_lowercase() {
+                Type::TypeVar(name)
+            } else {
+                panic!("Unknown type identifier {}", name)
+            }
+        }
+        Token::Keyword(ref s) if s == "Ref" => {
             let inner = parse_type(tokens);
             Type::Pointer {
                 referenced: Box::new(inner),

@@ -1,4 +1,116 @@
-use crate::ast::ast_type::{BinaryOp, Const, ExecTime, Type, UnaryOp};
+use std::fmt::{self, Display};
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+pub enum Type {
+    I32,
+    I64,
+    F64,
+    Char,
+
+    Unit,
+
+    FunType {
+        params: Vec<Option<Type>>,
+        ret: Box<Option<Type>>,
+    },
+    Pointer {
+        referenced: Box<Type>,
+    },
+    Array {
+        element_type: Box<Type>,
+        size: i32,
+    },
+    TypeVar(String),
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::I32 => write!(f, "I32"),
+            Type::I64 => write!(f, "I64"),
+            Type::F64 => write!(f, "F64"),
+            Type::Char => write!(f, "Char"),
+            Type::Unit => write!(f, "Unit"),
+            Type::TypeVar(name) => write!(f, "{}", name),
+            Type::Pointer { referenced } => write!(f, "Ref {}", referenced),
+            Type::Array { element_type, size } => write!(f, "[{}; {}]", element_type, size),
+            Type::FunType { params, ret } => {
+                write!(f, "(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if let Some(t) = p {
+                        write!(f, "{}", t)?;
+                    } else {
+                        write!(f, "Unknown")?;
+                    }
+                    if i != params.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") -> {}", ret.clone().unwrap_or(Type::Unit))
+            }
+        }
+    }
+}
+
+impl Type {
+    pub fn mangle(&self) -> String {
+        let s = format!("{}", self);
+        s.replace("(", "")
+            .replace(")", "")
+            .replace(", ", "_")
+            .replace("->", "_to_")
+            .replace(" ", "_")
+            .replace("[", "arr_")
+            .replace("]", "_")
+            .replace(";", "_x_")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scheme {
+    pub type_vars: Vec<String>,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ExecTime {
+    Runtime,
+    CompileTime,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum Const {
+    I32(i32),
+    I64(i64),
+    F64(f64),
+    Char(char),
+    Unit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum UnaryOp {
+    Complement,
+    Negate,
+    Not,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
+}
 
 #[derive(Debug)]
 pub enum Program {

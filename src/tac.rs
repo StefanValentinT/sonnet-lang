@@ -1,4 +1,3 @@
-use crate::ast::ast_type::*;
 use crate::ast::untyped_ast::*;
 use crate::gen_names::*;
 
@@ -166,7 +165,12 @@ fn func_to_tac(func: FunDecl) -> TacFuncDef {
             body.push(TacInstruction::Return(None));
         }
         _ => {
-            let ret_val = block_ret.expect("Semantic error: non-Unit function must return a value");
+            let ret_val = block_ret.unwrap_or_else(|| {
+                panic!(
+                    "Semantic error: non-Unit function '{}' must return a value",
+                    func.name
+                )
+            });
             body.push(TacInstruction::Return(Some(ret_val)));
         }
     }
@@ -191,12 +195,14 @@ fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> Option<
     for item in items {
         match item {
             BlockItem::UnitExpr(stmt) => stmt_to_tac(stmt, instructions),
+
             BlockItem::D(decl) => decl_to_tac(decl, instructions),
         }
     }
 
     match final_expr.kind {
         ExprKind::Constant(Const::Unit) => None,
+
         _ => Some(expr_to_tac(final_expr, instructions)),
     }
 }

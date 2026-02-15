@@ -1,11 +1,11 @@
-fun set_to_99(p: *I32) Unit {
-    *p = 99;
+fun set_to_99(p: Ref I32) Unit {
+    set(p, 99);
 }
 
 fun main() I32 {
-    let x: I32 = 0;
-    set_to_99(&x);
-    x
+    let x: Ref I32 = ref(0);
+    set_to_99(x);
+    deref(x)
 }
 
 #[

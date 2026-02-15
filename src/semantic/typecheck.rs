@@ -1,416 +1,282 @@
+use crate::ast::untyped_ast::*;
 use std::collections::HashMap;
 
-use crate::ast::ast_type::*;
-use crate::ast::untyped_ast::*;
-use crate::stdlib::*;
-
-#[derive(Clone)]
-struct SymbolEntry {
-    ty: Type,
+pub struct Context {
+    pub templates: HashMap<String, Vec<FunDecl>>,
+    pub locals: HashMap<String, Type>,
+    pub monomorphized: HashMap<String, FunDecl>,
 }
 
-type SymbolTable = HashMap<String, SymbolEntry>;
-
-pub fn typecheck(program: Program) -> Program {
-    let mut symbols = SymbolTable::new();
-
-    let funcs = match program {
-        Program::Program(funcs) => funcs,
-    };
-
-    for fun in builtin_function_decls() {
-        let fun_ty = Type::FunType {
-            params: fun.params.iter().map(|(_, t)| t.clone()).collect(),
-            ret: Box::new(fun.ret_type.clone()),
-        };
-        symbols.insert(fun.name, SymbolEntry { ty: fun_ty });
-    }
-
-    for f in &funcs {
-        declare_function(f, &mut symbols);
-    }
-
-    let typed_funs: Vec<FunDecl> = funcs
-        .into_iter()
-        .map(|f| typecheck_fun_decl(f, &symbols))
-        .collect();
-
-    Program::Program(typed_funs)
-}
-
-fn declare_function(decl: &FunDecl, symbols: &mut SymbolTable) {
-    let param_types = decl.params.iter().map(|(_, t)| t.clone()).collect();
-    let fun_ty = Type::FunType {
-        params: param_types,
-        ret: Box::new(decl.ret_type.clone()),
-    };
-
-    if let Some(old) = symbols.get(&decl.name) {
-        if old.ty != fun_ty {
-            panic!("Conflicting declarations of function {}", decl.name);
+impl Context {
+    fn new() -> Self {
+        Self {
+            templates: HashMap::new(),
+            locals: HashMap::new(),
+            monomorphized: HashMap::new(),
         }
     }
 
-    symbols.insert(decl.name.clone(), SymbolEntry { ty: fun_ty });
+    fn add_template(&mut self, decl: FunDecl) {
+        self.templates
+            .entry(decl.name.clone())
+            .or_default()
+            .push(decl);
+    }
 }
 
-fn typecheck_fun_decl(decl: FunDecl, globals: &SymbolTable) -> FunDecl {
-    let SymbolEntry { ty, .. } = globals.get(&decl.name).unwrap().clone();
+pub fn typecheck(program: Program) -> Program {
+    let mut ctx = Context::new();
+    let Program::Program(funcs) = program;
 
-    let (param_types, ret_ty) = match ty {
-        Type::FunType { params, ret } => (params, *ret),
-        _ => unreachable!(),
+    for f in funcs {
+        ctx.add_template(f);
+    }
+
+    let template_names: Vec<String> = ctx.templates.keys().cloned().collect();
+    for name in template_names {
+        let overloads = ctx.templates.get(&name).unwrap().clone();
+        for overload in overloads {
+            if is_concrete_signature(&overload) {
+                let mangled = mangle_name(&overload.name, &overload.params);
+                if !ctx.monomorphized.contains_key(&mangled) {
+                    typecheck_fun_instantiation(overload, HashMap::new(), &mut ctx);
+                }
+            }
+        }
+    }
+
+    Program::Program(ctx.monomorphized.into_values().collect())
+}
+
+fn is_concrete_signature(f: &FunDecl) -> bool {
+    f.params
+        .iter()
+        .all(|(_, t)| t.is_some() && !has_type_vars(t.as_ref().unwrap()))
+}
+
+fn has_type_vars(ty: &Type) -> bool {
+    match ty {
+        Type::TypeVar(_) => true,
+        Type::Pointer { referenced } => has_type_vars(referenced),
+        Type::Array { element_type, .. } => has_type_vars(element_type),
+        _ => false,
+    }
+}
+
+fn mangle_name(base_name: &str, params: &[(String, Option<Type>)]) -> String {
+    let mut name = base_name.to_string();
+    for (_, ty) in params {
+        if let Some(t) = ty {
+            let s = format!("_{}", t)
+                .replace(" ", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(",", "_")
+                .replace("->", "_to_")
+                .replace("[", "arr_")
+                .replace("]", "_")
+                .replace(";", "_x_");
+            name.push_str(&s);
+        } else {
+            name.push_str("_unknown");
+        }
+    }
+    name
+}
+
+fn typecheck_fun_instantiation(
+    decl: FunDecl,
+    subst: HashMap<String, Type>,
+    ctx: &mut Context,
+) -> String {
+    let mangled_name = if subst.is_empty() {
+        mangle_name(&decl.name, &decl.params)
+    } else {
+        let resolved_params: Vec<(String, Option<Type>)> = decl
+            .params
+            .iter()
+            .map(|(n, t)| (n.clone(), t.as_ref().map(|ty| apply_subst(ty, &subst))))
+            .collect();
+        mangle_name(&decl.name, &resolved_params)
     };
 
-    let mut locals = globals.clone();
-
-    if decl.exec_time == ExecTime::CompileTime && decl.params.len() > 0 {
-        panic!(
-            "Compile time function must be constant, thus can not be parametric over any input the compiler can not substitute."
-        );
+    if ctx.monomorphized.contains_key(&mangled_name) {
+        return mangled_name;
     }
+    let old_locals = std::mem::take(&mut ctx.locals);
 
     let typed_params: Vec<(String, Option<Type>)> = decl
         .params
-        .into_iter()
-        .zip(param_types.into_iter())
-        .map(|((name, _), ty)| {
-            locals.insert(
-                name.clone(),
-                SymbolEntry {
-                    ty: ty.clone().expect("Function param type missing"),
-                },
-            );
-            (name, ty)
+        .iter()
+        .map(|(n, t)| {
+            let concrete_ty = t
+                .as_ref()
+                .map(|ty| apply_subst(ty, &subst))
+                .expect("Inference failed");
+            ctx.locals.insert(n.clone(), concrete_ty.clone());
+            (n.clone(), Some(concrete_ty))
         })
         .collect();
 
-    let body = decl.body.map(|b| {
-        let typed_block = typecheck_block(&b, &mut locals);
+    let ret_ty = decl
+        .ret_type
+        .as_ref()
+        .map(|t| apply_subst(t, &subst))
+        .unwrap_or(Type::Unit);
 
-        let Block::Block(_, last_expr) = &typed_block;
-        if last_expr.ty != ret_ty.clone() {
-            panic!(
-                "Function {} expected return type {:?}, got {:?}",
-                decl.name, ret_ty, last_expr.ty
-            );
+    let body = decl.body.as_ref().map(|b| {
+        let checked_block = typecheck_block(b, ctx);
+        let Block::Block(_, last_expr) = &checked_block;
+        if last_expr.ty.as_ref().unwrap() != &ret_ty {
+            panic!("Mismatched return type in {}", mangled_name);
         }
-
-        typed_block
+        checked_block
     });
 
-    FunDecl {
-        name: decl.name,
-        params: typed_params,
-        ret_type: ret_ty,
-        body,
-        exec_time: decl.exec_time,
-    }
-}
-fn typecheck_block(block: &Block, symbols: &mut SymbolTable) -> Block {
-    let Block::Block(items, last_expr) = block;
-    let mut local_symbols = symbols.clone();
+    ctx.monomorphized.insert(
+        mangled_name.clone(),
+        FunDecl {
+            name: mangled_name.clone(),
+            params: typed_params,
+            ret_type: Some(ret_ty),
+            body,
+            exec_time: decl.exec_time,
+        },
+    );
 
-    let typed_items: Vec<BlockItem> = items
+    ctx.locals = old_locals;
+    mangled_name
+}
+
+fn typecheck_block(block: &Block, ctx: &mut Context) -> Block {
+    let Block::Block(items, last_expr) = block;
+    let saved_locals = ctx.locals.clone();
+
+    let typed_items = items
         .iter()
         .map(|item| match item {
-            BlockItem::D(d) => BlockItem::D(typecheck_decl(d, &mut local_symbols)),
-            BlockItem::UnitExpr(s) => {
-                let e = typecheck_expr(s, &mut local_symbols);
-                if e.ty != Some(Type::Unit) {
-                    panic!("Value not bound in compound!");
-                }
-                BlockItem::UnitExpr(e)
+            BlockItem::D(Decl::Variable(v)) => {
+                let init = typecheck_expr(
+                    match &v.initializer {
+                        Initializer::InitExpr(e) => e,
+                    },
+                    ctx,
+                );
+                let var_ty = v
+                    .var_type
+                    .clone()
+                    .or(init.ty.clone())
+                    .expect("Cannot infer var type");
+                ctx.locals.insert(v.name.clone(), var_ty.clone());
+                BlockItem::D(Decl::Variable(VarDecl {
+                    name: v.name.clone(),
+                    initializer: Initializer::InitExpr(init),
+                    var_type: Some(var_ty),
+                }))
             }
+            BlockItem::UnitExpr(e) => BlockItem::UnitExpr(typecheck_expr(e, ctx)),
         })
         .collect();
 
-    let typed_last = typecheck_expr(last_expr, &mut local_symbols);
-
+    let typed_last = typecheck_expr(last_expr, ctx);
+    ctx.locals = saved_locals;
     Block::Block(typed_items, typed_last)
 }
 
-fn typecheck_decl(decl: &Decl, symbols: &mut SymbolTable) -> Decl {
-    match decl {
-        Decl::Variable(v) => {
-            let init_expr = match &v.initializer {
-                Initializer::InitExpr(expr) => expr,
-            };
-            let init = typecheck_expr(&init_expr, symbols);
-            if init.ty != v.var_type.clone() {
-                panic!(
-                    "Type mismatch in variable '{}': expected {:?}, got {:?}",
-                    v.name, v.var_type, init.ty
-                );
-            }
-
-            symbols.insert(
-                v.name.clone(),
-                SymbolEntry {
-                    ty: v.var_type.clone().unwrap(),
-                },
-            );
-
-            Decl::Variable(VarDecl {
-                name: v.name.clone(),
-                initializer: Initializer::InitExpr(init),
-                var_type: v.var_type.clone(),
-            })
-        }
-    }
-}
-
-fn convert_by_assignment(e: Expr, target: &Type) -> Expr {
-    if e.ty == Some(target.clone()) {
-        e
-    } else {
-        panic!(
-            "Cannot convert type {:?} to {:?} as if by assignment",
-            e.ty, target
-        );
-    }
-}
-
-fn typecheck_expr(expr: &Expr, symbols: &mut SymbolTable) -> Expr {
+fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
     match &expr.kind {
-        ExprKind::Constant(Const::I32(v)) => Expr {
-            ty: Some(Type::I32),
-            kind: ExprKind::Constant(Const::I32(*v)),
-        },
-        ExprKind::Constant(Const::I64(v)) => Expr {
-            ty: Some(Type::I64),
-            kind: ExprKind::Constant(Const::I64(*v)),
-        },
-        ExprKind::Constant(Const::F64(v)) => Expr {
-            ty: Some(Type::F64),
-            kind: ExprKind::Constant(Const::F64(*v)),
-        },
-        ExprKind::Constant(Const::Char(v)) => Expr {
-            ty: Some(Type::Char),
-            kind: ExprKind::Constant(Const::Char(*v)),
-        },
-        ExprKind::Constant(Const::Unit) => Expr {
-            ty: Some(Type::Unit),
-            kind: ExprKind::Constant(Const::Unit),
-        },
-        ExprKind::Compound(block) => {
-            let typed_block = typecheck_block(block, symbols);
-            let Block::Block(_, last) = &typed_block;
-
+        ExprKind::Constant(c) => {
+            let ty = match c {
+                Const::I32(_) => Type::I32,
+                Const::I64(_) => Type::I64,
+                Const::F64(_) => Type::F64,
+                Const::Char(_) => Type::Char,
+                Const::Unit => Type::Unit,
+            };
             Expr {
-                ty: last.ty.clone(),
-                kind: ExprKind::Compound(Box::new(typed_block)),
+                ty: Some(ty),
+                kind: expr.kind.clone(),
             }
         }
-
         ExprKind::Var(name) => {
-            let entry = symbols
-                .get(name)
-                .unwrap_or_else(|| panic!("Undefined variable {}", name));
+            let ty = ctx.locals.get(name).cloned().expect("Undefined variable");
             Expr {
-                ty: Some(entry.ty.clone()),
+                ty: Some(ty),
                 kind: ExprKind::Var(name.clone()),
             }
         }
-        ExprKind::Unary(op, e) => {
-            let typed_inner = typecheck_expr(e, symbols);
-
-            match (&op, &typed_inner.ty) {
-                (UnaryOp::Negate, Some(Type::Pointer { .. }))
-                | (UnaryOp::Complement, Some(Type::Pointer { .. })) => {
-                    panic!("Cannot apply {:?} to a pointer type", op);
-                }
-                _ => {}
-            }
-
-            Expr {
-                ty: typed_inner.ty.clone(),
-                kind: ExprKind::Unary(op.clone(), Box::new(typed_inner)),
-            }
-        }
-        ExprKind::Binary(op, lhs, rhs) => {
-            let l = typecheck_expr(lhs, symbols);
-            let r = typecheck_expr(rhs, symbols);
-
-            match (&l.ty, &r.ty) {
-                (Some(Type::Pointer { .. }), Some(Type::Pointer { .. })) => match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::And | BinaryOp::Or => {}
-                    _ => panic!("Illegal operation on pointer types: {:?}", op),
-                },
-                _ if l.ty == r.ty => {}
-                _ => panic!("Binary op type mismatch: {:?} vs {:?}", l.ty, r.ty),
-            }
-
-            Expr {
-                ty: match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::And | BinaryOp::Or => {
-                        Some(Type::I32)
-                    }
-                    _ => l.ty.clone(),
-                },
-                kind: ExprKind::Binary(op.clone(), Box::new(l), Box::new(r)),
-            }
-        }
-        ExprKind::Assign(lhs, rhs) => {
-            let l = typecheck_expr(lhs, symbols);
-
-            if !is_lvalue(lhs) {
-                panic!("Left-hand side of assignment is not an lvalue");
-            }
-
-            let r = typecheck_expr(rhs, symbols);
-            let r_conv = convert_by_assignment(r, &(l.ty.clone().unwrap()));
-
-            Expr {
-                ty: Some(Type::Unit),
-                kind: ExprKind::Assign(Box::new(l), Box::new(r_conv)),
-            }
-        }
-        ExprKind::IfThenElse(cond, t, e) => {
-            let c = typecheck_expr(cond, symbols);
-            let t = typecheck_expr(t, symbols);
-            let e = typecheck_expr(e, symbols);
-
-            if t.ty != e.ty {
-                panic!(
-                    "Conditional branches must have same type, got {:?} vs {:?}",
-                    t.ty, e.ty
-                );
-            }
-
-            Expr {
-                ty: t.ty.clone(),
-                kind: ExprKind::IfThenElse(Box::new(c), Box::new(t), Box::new(e)),
-            }
-        }
         ExprKind::FunctionCall(name, args) => {
-            let entry = symbols
-                .get(name)
-                .unwrap_or_else(|| panic!("Undefined function {}", name));
+            let typed_args: Vec<Expr> = args.iter().map(|a| typecheck_expr(a, ctx)).collect();
+            let arg_tys: Vec<Type> = typed_args.iter().map(|a| a.ty.clone().unwrap()).collect();
 
-            let (params, ret) = match &entry.ty {
-                Type::FunType { params, ret } => (params.clone(), *ret.clone()),
-                _ => panic!("{} is not a function", name),
+            let (target_decl, final_subst) = {
+                let templates = ctx.templates.get(name).expect("Function not found");
+                let mut matched = None;
+
+                for template in templates {
+                    if template.params.len() != arg_tys.len() {
+                        continue;
+                    }
+                    let mut subst = HashMap::new();
+                    if template
+                        .params
+                        .iter()
+                        .zip(&arg_tys)
+                        .all(|((_, p_opt), a_ty)| {
+                            let p_ty = p_opt.clone().unwrap_or(Type::TypeVar("_infer".to_string()));
+                            unify(&p_ty, a_ty, &mut subst)
+                        })
+                    {
+                        matched = Some((template.clone(), subst));
+                        break;
+                    }
+                }
+                matched.expect("No matching overload found")
             };
+            let mangled =
+                typecheck_fun_instantiation(target_decl.clone(), final_subst.clone(), ctx);
 
-            if params.len() != args.len() {
-                panic!("Wrong number of arguments to {}", name);
-            }
-
-            let typed_args: Vec<_> = args.iter().map(|a| typecheck_expr(a, symbols)).collect();
-
-            for (arg, param_ty) in typed_args.iter().zip(params.iter()) {
-                if arg.ty != param_ty.clone() {
-                    panic!(
-                        "Argument type mismatch in call to {}: expected {:?}, got {:?}",
-                        name, param_ty, arg.ty
-                    );
-                }
-            }
+            let ret_ty = apply_subst(
+                target_decl.ret_type.as_ref().unwrap_or(&Type::Unit),
+                &final_subst,
+            );
 
             Expr {
-                ty: ret,
-                kind: ExprKind::FunctionCall(name.clone(), typed_args),
+                ty: Some(ret_ty),
+                kind: ExprKind::FunctionCall(mangled, typed_args),
             }
         }
-        ExprKind::Cast { expr, target } => {
-            let typed_inner = typecheck_expr(expr, symbols);
-
-            match (&typed_inner.ty, target) {
-                (Some(Type::Pointer { .. }), Type::I32 | Type::I64 | Type::F64)
-                | (Some(Type::I32) | Some(Type::I64) | Some(Type::F64), Type::Pointer { .. }) => {
-                    panic!(
-                        "Invalid cast from {:?} to pointer/non-pointer {:?}",
-                        typed_inner.ty, target
-                    );
-                }
-                _ => {}
-            }
-
-            Expr {
-                ty: Some(target.clone()),
-                kind: ExprKind::Cast {
-                    expr: Box::new(typed_inner),
-                    target: target.clone(),
-                },
-            }
-        }
-        ExprKind::Dereference(inner) => {
-            let typed_inner = typecheck_expr(inner, symbols);
-
-            match &typed_inner.ty {
-                Some(Type::Pointer { referenced }) => Expr {
-                    ty: Some((**referenced).clone()),
-                    kind: ExprKind::Dereference(Box::new(typed_inner)),
-                },
-                _ => panic!("Cannot dereference non-pointer."),
-            }
-        }
-        ExprKind::AddrOf(inner) => {
-            if !is_lvalue(inner) {
-                panic!("Can't take the address of a non-lvalue!");
-            }
-
-            let typed_inner = typecheck_expr(inner, symbols);
-
-            Expr {
-                ty: Some(Type::Pointer {
-                    referenced: Box::new(typed_inner.ty.clone().unwrap()),
-                }),
-                kind: ExprKind::AddrOf(Box::new(typed_inner)),
-            }
-        }
-
-        ExprKind::ArrayLiteral(exprs) => {
-            if exprs.is_empty() {
-                panic!("Cannot infer type of empty array literal");
-            }
-
-            let typed_exprs: Vec<_> = exprs.iter().map(|e| typecheck_expr(e, symbols)).collect();
-
-            let first_ty = &typed_exprs[0].ty;
-            for e in &typed_exprs[1..] {
-                if &e.ty != first_ty {
-                    panic!(
-                        "Array literal elements must have the same type, got {:?} and {:?}",
-                        first_ty, e.ty
-                    );
-                }
-            }
-
-            Expr {
-                ty: Some(Type::Array {
-                    element_type: Box::new(first_ty.as_ref().unwrap().clone()),
-                    size: typed_exprs.len() as i32,
-                }),
-                kind: ExprKind::ArrayLiteral(typed_exprs),
-            }
-        }
-
-        ExprKind::ArrayIndex(array_expr, index_expr) => {
-            let typed_array = typecheck_expr(array_expr, symbols);
-            let typed_index = typecheck_expr(index_expr, symbols);
-
-            if typed_index.ty != Some(Type::I32) {
-                panic!("Array index must be I32, got {:?}", typed_index.ty);
-            }
-
-            let element_ty = match &typed_array.ty {
-                Some(Type::Array { element_type, .. }) => (**element_type).clone(),
-                other => panic!("Cannot index non-array/slice type {:?}", other),
-            };
-
-            Expr {
-                ty: Some(element_ty),
-                kind: ExprKind::ArrayIndex(Box::new(typed_array), Box::new(typed_index)),
-            }
-        }
+        _ => todo!("Implement remaining expr kinds (Binary, Unary, etc) using similar logic"),
     }
 }
 
-fn is_lvalue(expr: &Expr) -> bool {
-    matches!(
-        expr.kind,
-        ExprKind::Var(_) | ExprKind::Dereference(_) | ExprKind::ArrayIndex(_, _)
-    )
+fn unify(expected: &Type, actual: &Type, subst: &mut HashMap<String, Type>) -> bool {
+    match (expected, actual) {
+        (Type::TypeVar(name), ty) => {
+            if let Some(existing) = subst.get(name) {
+                existing == ty
+            } else {
+                subst.insert(name.clone(), ty.clone());
+                true
+            }
+        }
+        (Type::Pointer { referenced: r1 }, Type::Pointer { referenced: r2 }) => {
+            unify(r1, r2, subst)
+        }
+        (a, b) => a == b,
+    }
+}
+
+fn apply_subst(ty: &Type, subst: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::TypeVar(n) => subst.get(n).cloned().unwrap_or(ty.clone()),
+        Type::Pointer { referenced } => Type::Pointer {
+            referenced: Box::new(apply_subst(referenced, subst)),
+        },
+        Type::Array { element_type, size } => Type::Array {
+            element_type: Box::new(apply_subst(element_type, subst)),
+            size: *size,
+        },
+        _ => ty.clone(),
+    }
 }

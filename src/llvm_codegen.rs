@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::ast_type::Type,
+    ast::untyped_ast::Type,
     tac::{TacBinaryOp, TacConst, TacFuncDef, TacInstruction, TacProgram, TacUnaryOp, TacVal},
 };
 
@@ -703,6 +703,7 @@ fn llvm_type(ty: &Type) -> String {
         Type::Pointer { referenced } => format!("{}*", llvm_type(referenced)),
         Type::Array { element_type, size } => format!("[{} x {}]", size, llvm_type(element_type)),
         Type::FunType { .. } => unreachable!("Function types are not first-class in LLVM"),
+        Type::TypeVar(name) => todo!(),
     }
 }
 

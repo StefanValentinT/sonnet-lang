@@ -52,9 +52,9 @@ pub enum Token {
     EOF,
 }
 
-const KEYWORDS: [&str; 16] = [
-    "fun", "cofun", "I32", "I64", "F64", "Char", "Unit", "if", "then", "else", "while", "break",
-    "continue", "match", "let", "as",
+const KEYWORDS: [&str; 17] = [
+    "fun", "cofun", "I32", "I64", "F64", "Char", "Ref", "Unit", "if", "then", "else", "while",
+    "break", "continue", "match", "let", "as",
 ];
 
 pub fn lex_string(input: String) -> Queue<Token> {
@@ -122,7 +122,6 @@ pub fn lex_string(input: String) -> Queue<Token> {
             ),
 
             '+' => tok_alt(&mut input, &mut tokens, &[("+", Token::Plus)]),
-            '*' => tok_alt(&mut input, &mut tokens, &[("*", Token::Star)]),
             '%' => tok_alt(&mut input, &mut tokens, &[("%", Token::Remainder)]),
 
             '!' => tok_alt(
@@ -151,11 +150,7 @@ pub fn lex_string(input: String) -> Queue<Token> {
 
             '|' => tok_alt(&mut input, &mut tokens, &[("||", Token::Or)]),
 
-            '&' => tok_alt(
-                &mut input,
-                &mut tokens,
-                &[("&", Token::Ampersand), ("&&", Token::And)],
-            ),
+            '&' => tok_alt(&mut input, &mut tokens, &[("&&", Token::And)]),
 
             '"' => tokens.add(lex_string_literal(&mut input)),
             '\'' => tokens.add(lex_char_literal(&mut input)),

@@ -1,4 +1,3 @@
-use crate::ast::ast_type::Type;
 use crate::ast::untyped_ast::*;
 use crate::gen_names::make_temporary;
 use crate::stdlib::*;
@@ -14,16 +13,6 @@ pub fn identifier_resolution_pass(program: Program) -> Program {
     match program {
         Program::Program(funcs) => {
             let mut global_map: HashMap<String, MapEntry> = HashMap::new();
-
-            for name in builtin_function_names() {
-                global_map.insert(
-                    name.to_string(),
-                    MapEntry {
-                        unique_name: name.clone(),
-                        from_current_scope: false,
-                    },
-                );
-            }
 
             for f in &funcs {
                 if let Some(prev) = global_map.get(&f.name) {

@@ -1,10 +1,4 @@
-use crate::{
-    ast::{
-        ast_type::{Const, ExecTime, Type},
-        untyped_ast::*,
-    },
-    stdlib::is_stdlib_fun,
-};
+use crate::{ast::untyped_ast::*, stdlib::is_stdlib_fun};
 
 //mod interpreter;
 //use interpreter::*;

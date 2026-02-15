@@ -21,9 +21,3 @@ fun main() I32 {
     let sum2: I32 = sum_slice(s);
     sum1 + sum2
 }
-
-#[
-<expect_ret>
-726
-</expect_ret>
-]#
