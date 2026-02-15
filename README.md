@@ -1,6 +1,6 @@
 # Haiku
 
-This is the _Haiku Compiler_.
+This is the *Haiku Compiler*.
 
 Installing it is easy with nix, the best package manager (and linux distro) in the world.
 Just run the following command in your terminal to get the latest version:
@@ -8,20 +8,29 @@ Just run the following command in your terminal to get the latest version:
 nix profile add github:StefanValentinT/haiku-lang
 ```
 
+In the future I want to bootstrap Haiku therefore I want to make installing through a non rust-dependent way possible,
+but right now the seriously easiest way to install Haiku is jsut to download or clone this repo and then run the following two simple cargo commands in it.
+```
+cargo build
+cargo install --path . --force
+```
+
+Happy coding! You may want to look into the `samples` folder for examples of the Haiku language or into `tests` for the automated compiler tests. Keep in mind this language is still very WIP.
+
 # Roadmap to 0.2
 
 Soon I want to release 0.2. That will be the first (real, not just for testing) release. At this point the language will not be stable,
 but it will have most of its features and be usable for other people. Also I want to write raylib-bindings and make a
 little game to prove the capabilities of Haiku. Until the release the following features have to be implemented.
 
-- [ ] Strings and Vectors,
-- [ ] First class functions,
-- [ ] Module and imports,
-- [ ] Project based compiler,
-- [ ] a little stdlib,
-- [ ] totality checker,
-- [ ] Algebraic datatypes,
--[ ] memory allocation
+- [ ] Strings and Vectors
+- [ ] First class functions
+- [ ] Module and imports
+- [ ] Project based compiler
+- [ ] a little stdlib
+- [ ] totality checker
+- [ ] Algebraic datatypes
+- [ ] memory allocation
 
 # About Haiku
 
