@@ -23,11 +23,6 @@ pub fn rename_tac_program(program: TacProgram) -> TacProgram {
 
     let renamed_funcs = funcs
         .into_iter()
-        .filter(|func| {
-            let TacFuncDef::Function { name, .. } = func;
-            // !is_stdlib_fun(name)
-            true
-        })
         .map(|f| rename_func(f, &function_map))
         .collect();
     TacProgram::Program(renamed_funcs)

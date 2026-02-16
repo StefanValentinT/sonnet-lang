@@ -1,6 +1,5 @@
 use crate::ast::untyped_ast::*;
 use crate::gen_names::make_temporary;
-use crate::stdlib::*;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -178,7 +177,6 @@ fn resolve_expr(expr: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> E
                 kind: ExprKind::Compound(Box::new(Block::Block(new_items, new_last_expr))),
             }
         }
-
         ExprKind::Unary(op, inner) => {
             let inner = resolve_expr(*inner, identifier_map);
             Expr {
@@ -275,6 +273,10 @@ fn resolve_expr(expr: Expr, identifier_map: &mut HashMap<String, MapEntry>) -> E
                 kind: ExprKind::ArrayIndex(Box::new(array_resolved), Box::new(index_resolved)),
             }
         }
+        ExprKind::TypeExpr(t) => Expr {
+            ty,
+            kind: ExprKind::TypeExpr(t),
+        },
     }
 }
 

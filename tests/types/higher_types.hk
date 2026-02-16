@@ -1,0 +1,17 @@
+fun main() I32 {
+    let my_type = I32; 
+    let result = is_i32(I32);
+   if  result then 0 else 5
+}
+
+
+fun is_i32(t: Type) I32 {
+    t == I32
+}
+
+#[
+<expect_ret>
+0
+</expect_ret>
+    
+]#

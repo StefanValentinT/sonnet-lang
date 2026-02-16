@@ -21,6 +21,7 @@ pub enum Type {
         size: i32,
     },
     TypeVar(String),
+    Type,
 }
 
 impl Display for Type {
@@ -48,6 +49,7 @@ impl Display for Type {
                 }
                 write!(f, ") -> {}", ret.clone().unwrap_or(Type::Unit))
             }
+            Type::Type => write!(f, "Type"),
         }
     }
 }
@@ -162,4 +164,6 @@ pub enum ExprKind {
     ArrayIndex(Box<Expr>, Box<Expr>),
 
     Cast { expr: Box<Expr>, target: Type },
+
+    TypeExpr(Type),
 }

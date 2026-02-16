@@ -344,7 +344,6 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
             emit_array_init(&base, &expr.ty.unwrap(), elems, 0, instructions);
             base
         }
-
         ExprKind::ArrayIndex(array, index) => {
             let array_val = expr_to_tac(*array, instructions);
             let index_val = expr_to_tac(*index, instructions);
@@ -387,6 +386,8 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
                 }
             }
         }
+
+        ExprKind::TypeExpr(t) => TacVal::Constant(TacConst::I32(type_id(&t))),
     }
 }
 
@@ -531,5 +532,20 @@ fn sizeof(ty: &Type) -> i32 {
         Type::Pointer { .. } => 8,
         Type::Array { element_type, size } => size * sizeof(element_type),
         _ => panic!("Unsupported type for sizeof"),
+    }
+}
+
+fn type_id(ty: &Type) -> i32 {
+    match ty {
+        Type::Unit => 0,
+        Type::I32 => 1,
+        Type::I64 => 2,
+        Type::F64 => 3,
+        Type::Char => 4,
+        Type::Type => 5,
+        Type::Pointer { .. } => 6,
+        Type::Array { .. } => 7,
+        Type::TypeVar(_) => 8,
+        Type::FunType { .. } => 9,
     }
 }

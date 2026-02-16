@@ -24,7 +24,7 @@ pub fn emit_llvm(program: TacProgram) -> String {
         out.push('\n');
     }
 
-    out.push_str(&llvm_c_stdlib());
+    out.push_str(&llvm_stdlib());
 
     out
 }
@@ -120,8 +120,9 @@ fn emit_function(
     out.push_str("}\n");
     out
 }
-fn llvm_c_stdlib() -> String {
+fn llvm_stdlib() -> String {
     r#"
+        ; Here code could be that can only be made in LLVM and not in the C runtime.
 "#
     .into()
 }
@@ -677,7 +678,8 @@ fn llvm_type(ty: &Type) -> String {
         Type::Pointer { referenced } => format!("{}*", llvm_type(referenced)),
         Type::Array { element_type, size } => format!("[{} x {}]", size, llvm_type(element_type)),
         Type::FunType { .. } => unreachable!("Function types are not first-class in LLVM"),
-        Type::TypeVar(name) => todo!(),
+        Type::TypeVar(name) => unreachable!("Already monomorphized!"),
+        Type::Type => "i8".into(),
     }
 }
 

@@ -17,6 +17,19 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
         },
     );
 
+    map.insert(
+        "mem_alloc".to_string(),
+        FunDecl {
+            name: "mem_alloc".to_string(),
+            params: vec![("size".to_string(), Some(Type::TypeVar("a".to_string())))],
+            ret_type: Some(Type::Pointer {
+                referenced: Box::new(Type::TypeVar("a".to_string())),
+            }),
+            body: None,
+            exec_time: ExecTime::Runtime,
+        },
+    );
+
     map
 });
 

@@ -197,7 +197,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: expr.kind.clone(),
             }
         }
-
         ExprKind::Var(name) => {
             let ty = ctx.locals.get(name).cloned().unwrap_or_else(|| {
                 panic!(
@@ -210,12 +209,11 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Var(name.clone()),
             }
         }
-
         ExprKind::Binary(op, left, right) => {
             let l = typecheck_expr(left, ctx);
             let r = typecheck_expr(right, ctx);
-            let lt = l.ty.as_ref().unwrap();
-            let rt = r.ty.as_ref().unwrap();
+            let lt = l.ty.as_ref().expect("Left side missing type");
+            let rt = r.ty.as_ref().expect("Right side missing type");
 
             if lt != rt {
                 panic!(
@@ -225,13 +223,66 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
             }
 
             let res_ty = match op {
-                BinaryOp::Equal
-                | BinaryOp::NotEqual
-                | BinaryOp::LessThan
+                BinaryOp::Equal | BinaryOp::NotEqual => Type::I32,
+
+                BinaryOp::LessThan
                 | BinaryOp::GreaterThan
                 | BinaryOp::LessOrEqual
-                | BinaryOp::GreaterOrEqual => Type::I32,
-                _ => lt.clone(),
+                | BinaryOp::GreaterOrEqual => match lt {
+                    Type::Char | Type::I32 | Type::I64 | Type::F64 => Type::I32,
+
+                    Type::Unit
+                    | Type::Type
+                    | Type::Pointer { .. }
+                    | Type::Array { .. }
+                    | Type::TypeVar(_)
+                    | Type::FunType { .. } => {
+                        panic!(
+                            "Type Error: Relational operator {:?} not defined for {:?}",
+                            op, lt
+                        )
+                    }
+                },
+
+                BinaryOp::Add
+                | BinaryOp::Subtract
+                | BinaryOp::Multiply
+                | BinaryOp::Divide
+                | BinaryOp::Remainder => match lt {
+                    Type::I32 | Type::I64 | Type::F64 => lt.clone(),
+
+                    Type::Char
+                    | Type::Unit
+                    | Type::Type
+                    | Type::Pointer { .. }
+                    | Type::Array { .. }
+                    | Type::TypeVar(_)
+                    | Type::FunType { .. } => {
+                        panic!(
+                            "Type Error: Arithmetic operator {:?} not defined for {:?}",
+                            op, lt
+                        )
+                    }
+                },
+
+                BinaryOp::And | BinaryOp::Or => match lt {
+                    Type::I32 => Type::I32,
+
+                    Type::I64
+                    | Type::F64
+                    | Type::Char
+                    | Type::Unit
+                    | Type::Type
+                    | Type::Pointer { .. }
+                    | Type::Array { .. }
+                    | Type::TypeVar(_)
+                    | Type::FunType { .. } => {
+                        panic!(
+                            "Type Error: Logical operator {:?} not defined for {:?}",
+                            op, lt
+                        )
+                    }
+                },
             };
 
             Expr {
@@ -239,7 +290,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Binary(op.clone(), Box::new(l), Box::new(r)),
             }
         }
-
         ExprKind::Unary(op, inner) => {
             let i = typecheck_expr(inner, ctx);
             let res_ty = i.ty.clone();
@@ -248,7 +298,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Unary(op.clone(), Box::new(i)),
             }
         }
-
         ExprKind::Assign(left, right) => {
             let l = typecheck_expr(left, ctx);
             if !is_lvalue(&l) {
@@ -268,7 +317,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Assign(Box::new(l), Box::new(r)),
             }
         }
-
         ExprKind::IfThenElse(cond, then_b, else_b) => {
             let c = typecheck_expr(cond, ctx);
             let t = typecheck_expr(then_b, ctx);
@@ -286,7 +334,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::IfThenElse(Box::new(c), Box::new(t), Box::new(e)),
             }
         }
-
         ExprKind::Compound(block) => {
             let checked_block = typecheck_block(block, ctx);
             let Block::Block(_, last) = &checked_block;
@@ -295,7 +342,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Compound(Box::new(checked_block)),
             }
         }
-
         ExprKind::FunctionCall(name, args) => {
             let typed_args: Vec<Expr> = args.iter().map(|a| typecheck_expr(a, ctx)).collect();
             let arg_tys: Vec<Type> = typed_args.iter().map(|a| a.ty.clone().unwrap()).collect();
@@ -345,7 +391,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::FunctionCall(mangled, typed_args),
             }
         }
-
         ExprKind::Dereference(inner) => {
             let i = typecheck_expr(inner, ctx);
             let res_ty = match i.ty.as_ref().unwrap() {
@@ -357,7 +402,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::Dereference(Box::new(i)),
             }
         }
-
         ExprKind::AddrOf(inner) => {
             if !is_lvalue(inner) {
                 panic!("Can't take the address of a non-lvalue!");
@@ -371,7 +415,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::AddrOf(Box::new(typed_inner)),
             }
         }
-
         ExprKind::Cast {
             expr: inner,
             target,
@@ -385,7 +428,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 },
             }
         }
-
         ExprKind::ArrayIndex(arr, idx) => {
             let a = typecheck_expr(arr, ctx);
             let i = typecheck_expr(idx, ctx);
@@ -404,7 +446,6 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::ArrayIndex(Box::new(a), Box::new(i)),
             }
         }
-
         ExprKind::ArrayLiteral(elements) => {
             if elements.is_empty() {
                 panic!("Empty array literals are not supported without explicit type.");
@@ -430,6 +471,10 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::ArrayLiteral(typed_elms),
             }
         }
+        ExprKind::TypeExpr(t) => Expr {
+            ty: Some(Type::Type),
+            kind: ExprKind::TypeExpr(t.clone()),
+        },
     }
 }
 

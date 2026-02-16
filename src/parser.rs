@@ -101,6 +101,7 @@ fn parse_type(tokens: &mut Queue<Token>) -> Type {
         Token::Keyword(ref s) if s == "I64" => Type::I64,
         Token::Keyword(ref s) if s == "F64" => Type::F64,
         Token::Keyword(ref s) if s == "Unit" => Type::Unit,
+        Token::Keyword(ref s) if s == "Type" => Type::Type,
         Token::Keyword(ref s) if s == "Char" => Type::Char,
         Token::OpenBracket => {
             let element_type = match tokens.remove().unwrap() {
@@ -331,6 +332,24 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
             let e = parse_expr(tokens, 0);
             expect(Token::CloseParen, tokens);
             e
+        }
+
+        Token::Keyword(ref s)
+            if ["I32", "I64", "F64", "Char", "Unit", "Type"].contains(&s.as_str()) =>
+        {
+            let ty = match s.as_str() {
+                "I32" => Type::I32,
+                "I64" => Type::I64,
+                "F64" => Type::F64,
+                "Char" => Type::Char,
+                "Unit" => Type::Unit,
+                "Type" => Type::Type,
+                _ => unreachable!(),
+            };
+            Expr {
+                ty: Some(Type::Type),
+                kind: ExprKind::TypeExpr(ty),
+            }
         }
 
         t => panic!("Invalid factor {:?}", t),

@@ -51,9 +51,9 @@ pub enum Token {
     EOF,
 }
 
-const KEYWORDS: [&str; 19] = [
-    "fun", "cofun", "I32", "I64", "F64", "Char", "Ref", "Unit", "if", "then", "else", "while",
-    "break", "continue", "match", "let", "as", "ref", "deref",
+const KEYWORDS: [&str; 21] = [
+    "fun", "cofun", "I32", "I64", "F64", "Char", "Bool", "Ref", "Unit", "Type", "if", "then",
+    "else", "while", "break", "continue", "match", "let", "as", "ref", "deref",
 ];
 
 pub fn lex_string(input: String) -> Queue<Token> {
