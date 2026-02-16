@@ -1,6 +1,6 @@
 fun main() I32 {
     let x: I32 = 1;
-    let p: *I64 = &x;
+    let p: Ref I64 = ref x;
     0
 }
 

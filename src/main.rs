@@ -13,9 +13,9 @@ mod tac;
 mod utils;
 
 use crate::ctfe::perform_ctfe_pass;
+use crate::tac::tac_pass;
 use crate::{
     lexer::lex_string, llvm_codegen::emit_llvm, parser::parse, semantic::semantic_analysis,
-    tac::gen_tac,
 };
 use clap::Parser;
 use clap::Subcommand;
@@ -212,7 +212,7 @@ async fn run_command(args: RunArgs) {
     };
     vprintln!("AST after CTFE:\n{:#?}", ctfe_ast);
 
-    let tac_ast = gen_tac(ctfe_ast);
+    let tac_ast = tac_pass(ctfe_ast);
     vprintln!("TAC-AST:\n{:#?}", tac_ast);
     if args.tac {
         return;

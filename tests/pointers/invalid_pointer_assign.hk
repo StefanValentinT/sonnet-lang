@@ -1,7 +1,7 @@
 fun main() I32 {
     let x: I32 = 42;
-    let p1: *I32 = &x;
-    let p2: *I64 = p1;
+    let p1: Ref I32 = ref x;
+    let p2: Ref I64 = p1;
 
     0
 }

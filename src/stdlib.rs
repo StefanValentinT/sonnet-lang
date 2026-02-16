@@ -17,62 +17,24 @@ pub static BUILTIN_FUNCTIONS: Lazy<HashMap<String, FunDecl>> = Lazy::new(|| {
         },
     );
 
-    // ref : a -> Ref a
-    map.insert(
-        "ref".to_string(),
-        FunDecl {
-            name: "ref".to_string(),
-            params: vec![("x".to_string(), Some(Type::TypeVar("a".to_string())))],
-            ret_type: Some(Type::Pointer {
-                referenced: Box::new(Type::TypeVar("a".to_string())),
-            }),
-            body: None,
-            exec_time: ExecTime::Runtime,
-        },
-    );
-
-    // deref : Ref a -> a
-    map.insert(
-        "deref".to_string(),
-        FunDecl {
-            name: "deref".to_string(),
-            params: vec![(
-                "p".to_string(),
-                Some(Type::Pointer {
-                    referenced: Box::new(Type::TypeVar("a".to_string())),
-                }),
-            )],
-            ret_type: Some(Type::TypeVar("a".to_string())),
-            body: None,
-            exec_time: ExecTime::Runtime,
-        },
-    );
-
-    // set : Ref a -> a -> Unit
-    map.insert(
-        "set".to_string(),
-        FunDecl {
-            name: "set".to_string(),
-            params: vec![
-                (
-                    "p".to_string(),
-                    Some(Type::Pointer {
-                        referenced: Box::new(Type::TypeVar("a".to_string())),
-                    }),
-                ),
-                ("value".to_string(), Some(Type::TypeVar("a".to_string()))),
-            ],
-            ret_type: Some(Type::Unit),
-            body: None,
-            exec_time: ExecTime::Runtime,
-        },
-    );
-
     map
 });
 
+pub fn strip_non_std_away(name: &str) -> Option<String> {
+    let parts: Vec<&str> = name.split('#').collect();
+    if parts.len() >= 3 {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
 pub fn is_stdlib_fun(name: &str) -> bool {
-    BUILTIN_FUNCTIONS.contains_key(name)
+    if let Some(stripped_name) = strip_non_std_away(name) {
+        BUILTIN_FUNCTIONS.contains_key(&stripped_name)
+    } else {
+        BUILTIN_FUNCTIONS.contains_key(name)
+    }
 }
 
 pub fn builtin_function_names() -> Vec<String> {

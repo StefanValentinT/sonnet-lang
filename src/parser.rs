@@ -108,7 +108,7 @@ fn parse_type(tokens: &mut Queue<Token>) -> Type {
                 Token::Keyword(ref s) if s == "I64" => Type::I64,
                 Token::Keyword(ref s) if s == "F64" => Type::F64,
                 Token::Keyword(ref s) if s == "Char" => Type::Char,
-                Token::Star => {
+                Token::Keyword(ref s) if s == "deref" => {
                     let inner = parse_type(tokens);
                     Type::Pointer {
                         referenced: Box::new(inner),
@@ -224,7 +224,7 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
             }
         }
 
-        Token::Ampersand => {
+        Token::Keyword(ref s) if s == "ref" => {
             let inner = parse_factor(tokens);
             Expr {
                 ty: None,
@@ -232,7 +232,7 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
             }
         }
 
-        Token::Star => {
+        Token::Keyword(ref s) if s == "deref" => {
             let inner = parse_factor(tokens);
             Expr {
                 ty: None,
@@ -448,7 +448,7 @@ fn is_token_binop(tok: &Token) -> bool {
 fn precedence(tok: &Token) -> i32 {
     use Token::*;
     match tok {
-        Star | Divide | Remainder => 50,
+        Multiply | Divide | Remainder => 50,
         Plus | Minus => 45,
         LessThan | LessOrEqual | GreaterThan | GreaterOrEqual => 35,
         Equal | NotEqual => 30,
@@ -475,7 +475,7 @@ fn parse_binop(tok: &Token) -> Result<BinaryOp, ()> {
     match tok {
         Token::Plus => Ok(Add),
         Token::Minus => Ok(Subtract),
-        Token::Star => Ok(Multiply),
+        Token::Multiply => Ok(Multiply),
         Token::Remainder => Ok(Remainder),
         Token::Divide => Ok(Divide),
         Token::And => Ok(And),

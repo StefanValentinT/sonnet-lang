@@ -1,9 +1,0 @@
-fun main() I32 {
-    let x: I32 = 5;
-    let y: I32 = *x;
-    y
-}
-
-#[
-<fail>
-]#

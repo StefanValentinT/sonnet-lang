@@ -1,0 +1,8 @@
+fun add(a: x, b: x) x {
+    a + b
+}
+
+fun main() I32 {
+    let result: I32 = add(2,3) + add(0.5,1.5) as I32;
+    result
+}

@@ -1,6 +1,6 @@
 fun main() I32 {
-    let p: *I32 = &(5 + 3);
-    0
+    let p: Ref I32 = ref (5 + 3);
+    deref p
 }
 
 #[

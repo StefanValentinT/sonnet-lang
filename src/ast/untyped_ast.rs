@@ -52,26 +52,6 @@ impl Display for Type {
     }
 }
 
-impl Type {
-    pub fn mangle(&self) -> String {
-        let s = format!("{}", self);
-        s.replace("(", "")
-            .replace(")", "")
-            .replace(", ", "_")
-            .replace("->", "_to_")
-            .replace(" ", "_")
-            .replace("[", "arr_")
-            .replace("]", "_")
-            .replace(";", "_x_")
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scheme {
-    pub type_vars: Vec<String>,
-    pub ty: Type,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExecTime {
     Runtime,

@@ -24,10 +24,9 @@ pub enum Token {
     Tilde,
     Minus,
     Decrement,
-    Ampersand,
 
     Plus,
-    Star,
+    Multiply,
     Divide,
     Remainder,
 
@@ -52,9 +51,9 @@ pub enum Token {
     EOF,
 }
 
-const KEYWORDS: [&str; 17] = [
+const KEYWORDS: [&str; 19] = [
     "fun", "cofun", "I32", "I64", "F64", "Char", "Ref", "Unit", "if", "then", "else", "while",
-    "break", "continue", "match", "let", "as",
+    "break", "continue", "match", "let", "as", "ref", "deref",
 ];
 
 pub fn lex_string(input: String) -> Queue<Token> {
@@ -122,6 +121,7 @@ pub fn lex_string(input: String) -> Queue<Token> {
             ),
 
             '+' => tok_alt(&mut input, &mut tokens, &[("+", Token::Plus)]),
+            '*' => tok_alt(&mut input, &mut tokens, &[("*", Token::Multiply)]),
             '%' => tok_alt(&mut input, &mut tokens, &[("%", Token::Remainder)]),
 
             '!' => tok_alt(

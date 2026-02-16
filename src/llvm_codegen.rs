@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{
-    ast::untyped_ast::Type,
-    tac::{TacBinaryOp, TacConst, TacFuncDef, TacInstruction, TacProgram, TacUnaryOp, TacVal},
-};
+use crate::{ast::untyped_ast::Type, gen_names::*, tac::ast::*};
 
 pub fn emit_llvm(program: TacProgram) -> String {
     let TacProgram::Program(funcs) = program;
@@ -103,12 +100,7 @@ fn emit_function(
             continue;
         }
 
-        out.push_str(&emit_instr(
-            instr,
-            defined,
-            &mut HashSet::new(),
-            reg_counter,
-        ));
+        out.push_str(&emit_instr(instr, defined, &mut HashSet::new()));
 
         terminated = matches!(
             instr,
@@ -130,22 +122,6 @@ fn emit_function(
 }
 fn llvm_c_stdlib() -> String {
     r#"
-declare i32 @putchar(i32)
-declare i32 @getchar()
-
-declare i32 @printf(i8*, ...)
-declare i32 @snprintf(i8*, i64, i8*, ...)
-declare i8* @malloc(i64)
-declare void @free(i8*)
-
-%Slice = type { i8*, i64 }
-
-declare %Slice @show_i32(i32)
-declare %Slice @show_i64(i64)
-declare %Slice @show_f64(double)
-declare %Slice @show_char(i32)
-declare %Slice @show_unit()
-
 "#
     .into()
 }
@@ -154,19 +130,18 @@ fn emit_instr(
     instr: &TacInstruction,
     defined: &HashSet<String>,
     externs: &mut HashSet<String>,
-    reg_counter: &mut usize,
 ) -> String {
     match instr {
         TacInstruction::Return(v_opt) => match v_opt {
             None => "  ret void\n".to_string(),
             Some(TacVal::Var(_, Type::Unit)) => "  ret void\n".to_string(),
             Some(val) => {
-                let (load, val_str, ty) = load_val(val, reg_counter);
+                let (load, val_str, ty) = load_val(val);
                 format!("{}  ret {} {}\n", load, ty, val_str)
             }
         },
         TacInstruction::Copy { src, dest } => {
-            let (load, val, ty) = load_val(src, reg_counter);
+            let (load, val, ty) = load_val(src);
             format!(
                 "{}  store {} {}, {}* %{}\n",
                 load,
@@ -177,14 +152,14 @@ fn emit_instr(
             )
         }
         TacInstruction::Unary { op, src, dest } => {
-            let (load, val, ty) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (load, val, ty) = load_val(src);
+            let r = make_register();
 
             let op_ir = match op {
                 TacUnaryOp::Negate => format!("sub {} 0, {}", ty, val),
                 TacUnaryOp::Complement => format!("xor {} {}, -1", ty, val),
                 TacUnaryOp::Not => {
-                    let c = fresh_reg(reg_counter);
+                    let c = make_register();
                     return format!(
                         "{}  {} = icmp eq {} {}, 0\n  {} = zext i1 {} to i32\n  store i32 {}, i32* %{}\n",
                         load,
@@ -216,9 +191,9 @@ fn emit_instr(
             src2,
             dest,
         } => {
-            let (a_load, a_val, ty) = load_val(src1, reg_counter);
-            let (b_load, b_val, _) = load_val(src2, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (a_load, a_val, ty) = load_val(src1);
+            let (b_load, b_val, _) = load_val(src2);
+            let r = make_register();
 
             let mut ir = String::new();
             ir.push_str(&a_load);
@@ -259,11 +234,11 @@ fn emit_instr(
                             }
                         };
 
-                        let res_struct = fresh_reg(reg_counter);
-                        let res_val = fresh_reg(reg_counter);
-                        let overflow = fresh_reg(reg_counter);
-                        let ok_label = format!("ok{}", reg_counter);
-                        let trap_label = format!("trap{}", reg_counter);
+                        let res_struct = make_register();
+                        let res_val = make_register();
+                        let overflow = make_register();
+                        let ok_label = make_ok_label();
+                        let trap_label = make_trap_label();
 
                         ir.push_str(&format!(
                             "  {} = call {{ {}, i1 }} @{}({} {}, {} {})\n\
@@ -346,7 +321,7 @@ fn emit_instr(
                 | TacBinaryOp::LessOrEqual
                 | TacBinaryOp::GreaterThan
                 | TacBinaryOp::GreaterOrEqual => {
-                    let r_icmp = fresh_reg(reg_counter);
+                    let r_icmp = make_register();
                     let cmp_instr = if ty == "double" {
                         let pred = match op {
                             TacBinaryOp::Equal => "oeq",
@@ -370,7 +345,7 @@ fn emit_instr(
                         };
                         format!("{} = icmp {} {} {}, {}", r_icmp, pred, ty, a_val, b_val)
                     };
-                    let zext = fresh_reg(reg_counter);
+                    let zext = make_register();
                     ir.push_str(&format!(
                         "  {}\n  {} = zext i1 {} to i32\n  store i32 {}, i32* %{}\n",
                         cmp_instr,
@@ -386,19 +361,18 @@ fn emit_instr(
         }
         TacInstruction::Jump { target } => format!("  br label %{}\n", target),
         TacInstruction::JumpIfZero { condition, target } => {
-            let (load, v, ty) = load_val(condition, reg_counter);
-            let r = fresh_reg(reg_counter);
-            let cont = format!("cont{}", reg_counter);
-
+            let (load, v, ty) = load_val(condition);
+            let r = make_register();
+            let cont = make_cont_label();
             format!(
                 "{}  {} = icmp eq {} {}, 0\n  br i1 {}, label %{}, label %{}\n{}:\n",
                 load, r, ty, v, r, target, cont, cont
             )
         }
         TacInstruction::JumpIfNotZero { condition, target } => {
-            let (load, v, ty) = load_val(condition, reg_counter);
-            let r = fresh_reg(reg_counter);
-            let cont = format!("cont{}", reg_counter);
+            let (load, v, ty) = load_val(condition);
+            let r = make_register();
+            let cont = make_cont_label();
 
             format!(
                 "{}  {} = icmp ne {} {}, 0\n  br i1 {}, label %{}, label %{}\n{}:\n",
@@ -418,7 +392,7 @@ fn emit_instr(
             let mut arg_list = vec![];
 
             for a in args {
-                let (load, v, ty) = load_val(a, reg_counter);
+                let (load, v, ty) = load_val(a);
                 ir.push_str(&load);
                 arg_list.push(format!("{} {}", ty, v));
             }
@@ -432,7 +406,7 @@ fn emit_instr(
                     ));
                 }
                 TacVal::Var(name, ty) => {
-                    let r = fresh_reg(reg_counter);
+                    let r = make_register();
                     let llvm_ty = llvm_type(ty);
 
                     ir.push_str(&format!(
@@ -454,13 +428,13 @@ fn emit_instr(
         }
         TacInstruction::Label(label) => format!("{}:\n", label),
         TacInstruction::Truncate { src, dest } => {
-            let (load, v, src_ty) = load_val(src, reg_counter);
+            let (load, v, src_ty) = load_val(src);
             let dst_ty = llvm_type(match dest {
                 TacVal::Var(_, ty) => ty,
                 _ => unreachable!(),
             });
 
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
 
             format!(
                 "{}  {} = trunc {} {} to {}\n  store {} {}, {}* %{}\n",
@@ -476,13 +450,13 @@ fn emit_instr(
             )
         }
         TacInstruction::SignExtend { src, dest } => {
-            let (load, v, src_ty) = load_val(src, reg_counter);
+            let (load, v, src_ty) = load_val(src);
             let dst_ty = llvm_type(match dest {
                 TacVal::Var(_, ty) => ty,
                 _ => unreachable!(),
             });
 
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
 
             format!(
                 "{}  {} = sext {} {} to {}\n  store {} {}, {}* %{}\n",
@@ -498,8 +472,8 @@ fn emit_instr(
             )
         }
         TacInstruction::F64ToI32 { src, dest } => {
-            let (load, v, _) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (load, v, _) = load_val(src);
+            let r = make_register();
 
             format!(
                 "{}  {} = fptosi double {} to i32\n  store i32 {}, i32* %{}\n",
@@ -511,8 +485,8 @@ fn emit_instr(
             )
         }
         TacInstruction::F64ToI64 { src, dest } => {
-            let (load, v, _) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (load, v, _) = load_val(src);
+            let r = make_register();
 
             format!(
                 "{}  {} = fptosi double {} to i64\n  store i64 {}, i64* %{}\n",
@@ -524,8 +498,8 @@ fn emit_instr(
             )
         }
         TacInstruction::I32ToF64 { src, dest } => {
-            let (load, v, _) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (load, v, _) = load_val(src);
+            let r = make_register();
 
             format!(
                 "{}  {} = sitofp i32 {} to double\n  store double {}, double* %{}\n",
@@ -537,8 +511,8 @@ fn emit_instr(
             )
         }
         TacInstruction::I64ToF64 { src, dest } => {
-            let (load, v, _) = load_val(src, reg_counter);
-            let r = fresh_reg(reg_counter);
+            let (load, v, _) = load_val(src);
+            let r = make_register();
 
             format!(
                 "{}  {} = sitofp i64 {} to double\n  store double {}, double* %{}\n",
@@ -559,7 +533,7 @@ fn emit_instr(
                 _ => unreachable!(),
             });
 
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
             format!(
                 "  {} = getelementptr {}, {}* %{}, i32 0\n  store {} {}, {}* %{}\n",
                 r,
@@ -573,13 +547,13 @@ fn emit_instr(
             )
         }
         TacInstruction::Load { src_ptr, dest } => {
-            let (load_ir, v, ty) = load_val(src_ptr, reg_counter);
+            let (load_ir, v, ty) = load_val(src_ptr);
             let dst_ty = llvm_type(&match dest {
                 TacVal::Var(_, t) => t.clone(),
                 _ => unreachable!(),
             });
 
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
             format!(
                 "{}  {} = load {}, {}* {}\n  store {} {}, {}* %{}\n",
                 load_ir,
@@ -594,8 +568,8 @@ fn emit_instr(
             )
         }
         TacInstruction::Store { src, dest_ptr } => {
-            let (src_load, val, ty) = load_val(src, reg_counter);
-            let (ptr_load, ptr_val, ptr_ty) = load_val(dest_ptr, reg_counter);
+            let (src_load, val, ty) = load_val(src);
+            let (ptr_load, ptr_val, ptr_ty) = load_val(dest_ptr);
             format!(
                 "{}{}  store {} {}, {}* {}\n",
                 src_load, ptr_load, ty, val, ty, ptr_val
@@ -607,7 +581,7 @@ fn emit_instr(
             scale: _,
             dest,
         } => {
-            let (idx_load, idx_val, _) = load_val(index, reg_counter);
+            let (idx_load, idx_val, _) = load_val(index);
 
             let (array_ty, array_size) = match ptr {
                 TacVal::Var(_, Type::Array { element_type, size }) => {
@@ -616,7 +590,7 @@ fn emit_instr(
                 _ => unreachable!("AddPtr ptr must be an array variable"),
             };
 
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
 
             format!(
                 "{}  {} = getelementptr inbounds [{} x {}], [{} x {}]* %{}, i64 0, i64 {}\n  store {}* {}, {}** %{}\n",
@@ -635,7 +609,7 @@ fn emit_instr(
             )
         }
         TacInstruction::CopyToOffset { src, dest, offset } => {
-            let (load, v, elem_ty) = load_val(src, reg_counter);
+            let (load, v, elem_ty) = load_val(src);
 
             let (array_ty, array_size) = match dest {
                 TacVal::Var(_, Type::Array { element_type, size }) => {
@@ -644,7 +618,7 @@ fn emit_instr(
                 _ => panic!("CopyToOffset destination must be an array variable"),
             };
 
-            let elem_ptr = fresh_reg(reg_counter);
+            let elem_ptr = make_register();
 
             let elem_size = match elem_ty.as_str() {
                 "i32" => 4,
@@ -674,7 +648,7 @@ fn emit_instr(
     }
 }
 
-fn load_val(v: &TacVal, reg_counter: &mut usize) -> (String, String, String) {
+fn load_val(v: &TacVal) -> (String, String, String) {
     match v {
         TacVal::Constant(TacConst::I32(c)) => ("".into(), c.to_string(), "i32".into()),
         TacVal::Constant(TacConst::I64(c)) => ("".into(), c.to_string(), "i64".into()),
@@ -682,7 +656,7 @@ fn load_val(v: &TacVal, reg_counter: &mut usize) -> (String, String, String) {
         TacVal::Constant(TacConst::Char(c)) => ("".into(), (*c as u32).to_string(), "i32".into()),
         TacVal::Var(_, Type::Unit) => ("".into(), "".into(), "void".into()),
         TacVal::Var(name, ty) => {
-            let r = fresh_reg(reg_counter);
+            let r = make_register();
             let llvm_ty = llvm_type(ty);
             (
                 format!("  {} = load {}, {}* %{}\n", r, llvm_ty, llvm_ty, name),
@@ -705,12 +679,6 @@ fn llvm_type(ty: &Type) -> String {
         Type::FunType { .. } => unreachable!("Function types are not first-class in LLVM"),
         Type::TypeVar(name) => todo!(),
     }
-}
-
-fn fresh_reg(reg_counter: &mut usize) -> String {
-    let r = format!("%r{}", *reg_counter);
-    *reg_counter += 1;
-    r
 }
 
 fn var_name(v: &TacVal) -> &str {

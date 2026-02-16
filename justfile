@@ -1,7 +1,7 @@
 install:
     cargo fmt
     cargo build
-    cargo install --path . --force
+    cargo install --path . --force --offline
 
 test:
     cargo fmt

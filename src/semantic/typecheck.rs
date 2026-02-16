@@ -65,17 +65,12 @@ fn has_type_vars(ty: &Type) -> bool {
 
 fn mangle_name(base_name: &str, params: &[(String, Option<Type>)]) -> String {
     let mut name = base_name.to_string();
+    if !params.is_empty() {
+        name.push('#')
+    };
     for (_, ty) in params {
         if let Some(t) = ty {
-            let s = format!("_{}", t)
-                .replace(" ", "")
-                .replace("(", "")
-                .replace(")", "")
-                .replace(",", "_")
-                .replace("->", "_to_")
-                .replace("[", "arr_")
-                .replace("]", "_")
-                .replace(";", "_x_");
+            let s = format!("[{}]", t);
             name.push_str(&s);
         } else {
             name.push_str("_unknown");
@@ -123,6 +118,16 @@ fn typecheck_fun_instantiation(
         .as_ref()
         .map(|t| apply_subst(t, &subst))
         .unwrap_or(Type::Unit);
+    ctx.monomorphized.insert(
+        mangled_name.clone(),
+        FunDecl {
+            name: mangled_name.clone(),
+            params: typed_params.clone(),
+            ret_type: Some(ret_ty.clone()),
+            body: None,
+            exec_time: decl.exec_time,
+        },
+    );
 
     let body = decl.body.as_ref().map(|b| {
         let checked_block = typecheck_block(b, ctx);
@@ -133,17 +138,7 @@ fn typecheck_fun_instantiation(
         checked_block
     });
 
-    ctx.monomorphized.insert(
-        mangled_name.clone(),
-        FunDecl {
-            name: mangled_name.clone(),
-            params: typed_params,
-            ret_type: Some(ret_ty),
-            body,
-            exec_time: decl.exec_time,
-        },
-    );
-
+    ctx.monomorphized.get_mut(&mangled_name).unwrap().body = body;
     ctx.locals = old_locals;
     mangled_name
 }
@@ -156,24 +151,28 @@ fn typecheck_block(block: &Block, ctx: &mut Context) -> Block {
         .iter()
         .map(|item| match item {
             BlockItem::D(Decl::Variable(v)) => {
-                let init = typecheck_expr(
-                    match &v.initializer {
-                        Initializer::InitExpr(e) => e,
-                    },
-                    ctx,
-                );
-                let var_ty = v
-                    .var_type
-                    .clone()
-                    .or(init.ty.clone())
-                    .expect("Cannot infer var type");
+                let init = typecheck_expr( match &v.initializer {
+                    Initializer::InitExpr(e) => e,},ctx,);
+                let declared_ty = v.var_type.clone();
+                let init_ty = init.ty.clone().expect("Initializer must have a type");
+
+                if let Some(ref annotated_ty) = declared_ty {
+                    if annotated_ty != &init_ty {
+                        panic!(
+                            "Type Mismatch in Decl: Variable '{}' declared as {}, but initialized with {}",
+                            v.name, annotated_ty, init_ty
+                        );
+                    }
+                }
+
+                let var_ty = declared_ty.unwrap_or(init_ty);
                 ctx.locals.insert(v.name.clone(), var_ty.clone());
                 BlockItem::D(Decl::Variable(VarDecl {
-                    name: v.name.clone(),
-                    initializer: Initializer::InitExpr(init),
-                    var_type: Some(var_ty),
-                }))
-            }
+                                name: v.name.clone(),
+                                initializer: Initializer::InitExpr(init),
+                                var_type: Some(var_ty),
+                            }))
+                        }
             BlockItem::UnitExpr(e) => BlockItem::UnitExpr(typecheck_expr(e, ctx)),
         })
         .collect();
@@ -198,21 +197,116 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: expr.kind.clone(),
             }
         }
+
         ExprKind::Var(name) => {
-            let ty = ctx.locals.get(name).cloned().expect("Undefined variable");
+            let ty = ctx.locals.get(name).cloned().unwrap_or_else(|| {
+                panic!(
+                    "Compiler Error: Undefined variable '{}'. Ensure identifier resolution ran.",
+                    name
+                )
+            });
             Expr {
                 ty: Some(ty),
                 kind: ExprKind::Var(name.clone()),
             }
         }
+
+        ExprKind::Binary(op, left, right) => {
+            let l = typecheck_expr(left, ctx);
+            let r = typecheck_expr(right, ctx);
+            let lt = l.ty.as_ref().unwrap();
+            let rt = r.ty.as_ref().unwrap();
+
+            if lt != rt {
+                panic!(
+                    "Type Mismatch: Binary op {:?} expected same types, got {:?} and {:?}",
+                    op, lt, rt
+                );
+            }
+
+            let res_ty = match op {
+                BinaryOp::Equal
+                | BinaryOp::NotEqual
+                | BinaryOp::LessThan
+                | BinaryOp::GreaterThan
+                | BinaryOp::LessOrEqual
+                | BinaryOp::GreaterOrEqual => Type::I32,
+                _ => lt.clone(),
+            };
+
+            Expr {
+                ty: Some(res_ty),
+                kind: ExprKind::Binary(op.clone(), Box::new(l), Box::new(r)),
+            }
+        }
+
+        ExprKind::Unary(op, inner) => {
+            let i = typecheck_expr(inner, ctx);
+            let res_ty = i.ty.clone();
+            Expr {
+                ty: res_ty,
+                kind: ExprKind::Unary(op.clone(), Box::new(i)),
+            }
+        }
+
+        ExprKind::Assign(left, right) => {
+            let l = typecheck_expr(left, ctx);
+            if !is_lvalue(&l) {
+                panic!("Left-hand side of assignment is not an lvalue");
+            }
+            let r = typecheck_expr(right, ctx);
+
+            if l.ty != r.ty {
+                panic!(
+                    "Type Mismatch in Assignment: Cannot assign {:?} to {:?}",
+                    r.ty, l.ty
+                );
+            }
+
+            Expr {
+                ty: Some(Type::Unit),
+                kind: ExprKind::Assign(Box::new(l), Box::new(r)),
+            }
+        }
+
+        ExprKind::IfThenElse(cond, then_b, else_b) => {
+            let c = typecheck_expr(cond, ctx);
+            let t = typecheck_expr(then_b, ctx);
+            let e = typecheck_expr(else_b, ctx);
+
+            if t.ty != e.ty {
+                panic!(
+                    "Type Mismatch: If branches must return same type. Got {:?} and {:?}",
+                    t.ty, e.ty
+                );
+            }
+
+            Expr {
+                ty: t.ty.clone(),
+                kind: ExprKind::IfThenElse(Box::new(c), Box::new(t), Box::new(e)),
+            }
+        }
+
+        ExprKind::Compound(block) => {
+            let checked_block = typecheck_block(block, ctx);
+            let Block::Block(_, last) = &checked_block;
+            Expr {
+                ty: last.ty.clone(),
+                kind: ExprKind::Compound(Box::new(checked_block)),
+            }
+        }
+
         ExprKind::FunctionCall(name, args) => {
             let typed_args: Vec<Expr> = args.iter().map(|a| typecheck_expr(a, ctx)).collect();
             let arg_tys: Vec<Type> = typed_args.iter().map(|a| a.ty.clone().unwrap()).collect();
 
             let (target_decl, final_subst) = {
-                let templates = ctx.templates.get(name).expect("Function not found");
-                let mut matched = None;
+                let templates = ctx
+                    .templates
+                    .get(name)
+                    .unwrap_or_else(|| panic!("Function '{}' not found in templates.", name));
 
+                let mut matched = None;
                 for template in templates {
                     if template.params.len() != arg_tys.len() {
                         continue;
@@ -231,11 +325,16 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                         break;
                     }
                 }
-                matched.expect("No matching overload found")
+                matched.unwrap_or_else(|| {
+                    panic!(
+                        "No matching overload found for function '{}' with args {:?}",
+                        name, arg_tys
+                    )
+                })
             };
+
             let mangled =
                 typecheck_fun_instantiation(target_decl.clone(), final_subst.clone(), ctx);
-
             let ret_ty = apply_subst(
                 target_decl.ret_type.as_ref().unwrap_or(&Type::Unit),
                 &final_subst,
@@ -246,7 +345,91 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
                 kind: ExprKind::FunctionCall(mangled, typed_args),
             }
         }
-        _ => todo!("Implement remaining expr kinds (Binary, Unary, etc) using similar logic"),
+
+        ExprKind::Dereference(inner) => {
+            let i = typecheck_expr(inner, ctx);
+            let res_ty = match i.ty.as_ref().unwrap() {
+                Type::Pointer { referenced } => *referenced.clone(),
+                other => panic!("Cannot dereference non-pointer type: {:?}", other),
+            };
+            Expr {
+                ty: Some(res_ty),
+                kind: ExprKind::Dereference(Box::new(i)),
+            }
+        }
+
+        ExprKind::AddrOf(inner) => {
+            if !is_lvalue(inner) {
+                panic!("Can't take the address of a non-lvalue!");
+            }
+            let typed_inner = typecheck_expr(inner, ctx);
+            let res_ty = Type::Pointer {
+                referenced: Box::new(typed_inner.ty.clone().unwrap()),
+            };
+            Expr {
+                ty: Some(res_ty),
+                kind: ExprKind::AddrOf(Box::new(typed_inner)),
+            }
+        }
+
+        ExprKind::Cast {
+            expr: inner,
+            target,
+        } => {
+            let i = typecheck_expr(inner, ctx);
+            Expr {
+                ty: Some(target.clone()),
+                kind: ExprKind::Cast {
+                    expr: Box::new(i),
+                    target: target.clone(),
+                },
+            }
+        }
+
+        ExprKind::ArrayIndex(arr, idx) => {
+            let a = typecheck_expr(arr, ctx);
+            let i = typecheck_expr(idx, ctx);
+
+            if i.ty != Some(Type::I32) && i.ty != Some(Type::I64) {
+                panic!("Array index must be an integer, got {:?}", i.ty);
+            }
+
+            let res_ty = match a.ty.as_ref().unwrap() {
+                Type::Array { element_type, .. } => *element_type.clone(),
+                Type::Pointer { referenced } => *referenced.clone(),
+                _ => panic!("Cannot index into non-array/non-pointer type {:?}", a.ty),
+            };
+            Expr {
+                ty: Some(res_ty),
+                kind: ExprKind::ArrayIndex(Box::new(a), Box::new(i)),
+            }
+        }
+
+        ExprKind::ArrayLiteral(elements) => {
+            if elements.is_empty() {
+                panic!("Empty array literals are not supported without explicit type.");
+            }
+            let typed_elms: Vec<Expr> = elements.iter().map(|e| typecheck_expr(e, ctx)).collect();
+            let el_ty = typed_elms[0].ty.clone().unwrap();
+
+            for (idx, e) in typed_elms.iter().enumerate() {
+                if e.ty.as_ref().unwrap() != &el_ty {
+                    panic!(
+                        "Array literal element {} mismatch: expected {:?}, got {:?}",
+                        idx, el_ty, e.ty
+                    );
+                }
+            }
+
+            let size = typed_elms.len() as i32;
+            Expr {
+                ty: Some(Type::Array {
+                    element_type: Box::new(el_ty),
+                    size,
+                }),
+                kind: ExprKind::ArrayLiteral(typed_elms),
+            }
+        }
     }
 }
 
@@ -279,4 +462,11 @@ fn apply_subst(ty: &Type, subst: &HashMap<String, Type>) -> Type {
         },
         _ => ty.clone(),
     }
+}
+
+fn is_lvalue(expr: &Expr) -> bool {
+    matches!(
+        expr.kind,
+        ExprKind::Var(_) | ExprKind::Dereference(_) | ExprKind::ArrayIndex(_, _)
+    )
 }

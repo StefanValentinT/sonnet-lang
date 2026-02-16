@@ -1,145 +1,7 @@
 use crate::ast::untyped_ast::*;
 use crate::gen_names::*;
-
-#[derive(Debug)]
-pub enum TacProgram {
-    Program(Vec<TacFuncDef>),
-}
-
-#[derive(Debug)]
-pub enum TacFuncDef {
-    Function {
-        name: String,
-        params: Vec<(String, Type)>,
-        ret_type: Type,
-        body: Vec<TacInstruction>,
-    },
-}
-
-#[derive(Debug)]
-pub enum TacInstruction {
-    Return(Option<TacVal>),
-    Truncate {
-        src: TacVal,
-        dest: TacVal,
-    },
-    SignExtend {
-        src: TacVal,
-        dest: TacVal,
-    },
-    F64ToI32 {
-        src: TacVal,
-        dest: TacVal,
-    },
-    F64ToI64 {
-        src: TacVal,
-        dest: TacVal,
-    },
-    I32ToF64 {
-        src: TacVal,
-        dest: TacVal,
-    },
-    I64ToF64 {
-        src: TacVal,
-        dest: TacVal,
-    },
-    Unary {
-        op: TacUnaryOp,
-        src: TacVal,
-        dest: TacVal,
-    },
-    Binary {
-        op: TacBinaryOp,
-        src1: TacVal,
-        src2: TacVal,
-        dest: TacVal,
-    },
-    Copy {
-        src: TacVal,
-        dest: TacVal,
-    },
-    Jump {
-        target: String,
-    },
-    JumpIfZero {
-        condition: TacVal,
-        target: String,
-    },
-    JumpIfNotZero {
-        condition: TacVal,
-        target: String,
-    },
-    Label(String),
-    FunCall {
-        fun_name: String,
-        args: Vec<TacVal>,
-        dest: TacVal,
-    },
-    GetAddress {
-        src: TacVal,
-        dest: TacVal,
-    },
-    Load {
-        src_ptr: TacVal,
-        dest: TacVal,
-    },
-    Store {
-        src: TacVal,
-        dest_ptr: TacVal,
-    },
-    AddPtr {
-        ptr: TacVal,
-        index: TacVal,
-        scale: i32,
-        dest: TacVal,
-    },
-    CopyToOffset {
-        src: TacVal,
-        dest: TacVal,
-        offset: i32,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum TacVal {
-    Constant(TacConst),
-    Var(String, Type),
-}
-
-enum ExpResult {
-    PlainOperand(TacVal),
-    DereferencedPointer(TacVal),
-}
-
-#[derive(Debug, Clone)]
-pub enum TacConst {
-    I32(i32),
-    I64(i64),
-    F64(f64),
-    Char(char),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TacUnaryOp {
-    Complement,
-    Negate,
-    Not,
-}
-
-#[derive(Debug)]
-pub enum TacBinaryOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Remainder,
-    Equal,
-    NotEqual,
-    LessThan,
-    LessOrEqual,
-    GreaterThan,
-    GreaterOrEqual,
-}
+use crate::stdlib::is_stdlib_fun;
+use crate::tac::ast::*;
 
 pub fn gen_tac(program: Program) -> TacProgram {
     let tac_funcs: Vec<TacFuncDef> = match program {
@@ -148,47 +10,47 @@ pub fn gen_tac(program: Program) -> TacProgram {
     TacProgram::Program(tac_funcs)
 }
 fn func_to_tac(func: FunDecl) -> TacFuncDef {
-    let mut body = Vec::new();
+    let is_stdlib = is_stdlib_fun(&func.name);
 
-    let block_ret = if let Some(block) = func.body {
-        block_to_tac(block, &mut body)
+    let body = if is_stdlib {
+        Vec::new()
     } else {
-        None
-    };
+        let mut instructions = Vec::new();
+        let block_ret = if let Some(block) = func.body {
+            block_to_tac(block, &mut instructions)
+        } else {
+            None
+        };
 
-    match func
-        .ret_type
-        .clone()
-        .expect("The assumption that everything is well-typed has been proven in the typechecker.")
-    {
-        Type::Unit => {
-            body.push(TacInstruction::Return(None));
+        let ret_ty = func.ret_type.as_ref().expect("Typed in typechecker.");
+        match ret_ty {
+            Type::Unit => {
+                instructions.push(TacInstruction::Return(None));
+            }
+            _ => {
+                let ret_val = block_ret.unwrap_or_else(|| {
+                    panic!(
+                        "Semantic error: non-Unit function '{}' must return a value",
+                        func.name
+                    )
+                });
+                instructions.push(TacInstruction::Return(Some(ret_val)));
+            }
         }
-        _ => {
-            let ret_val = block_ret.unwrap_or_else(|| {
-                panic!(
-                    "Semantic error: non-Unit function '{}' must return a value",
-                    func.name
-                )
-            });
-            body.push(TacInstruction::Return(Some(ret_val)));
-        }
-    }
+        instructions
+    };
 
     TacFuncDef::Function {
         name: func.name,
         params: func
             .params
             .into_iter()
-            .map(|(name, ty)| (name, ty.expect("The assumption that everything is well-typed has been proven in the typechecker.")))
+            .map(|(name, ty)| (name, ty.expect("Typed in typechecker.")))
             .collect(),
-        ret_type: func.ret_type.expect(
-            "The assumption that everything is well-typed has been proven in the typechecker.",
-        ),
+        ret_type: func.ret_type.expect("Typed in typechecker."),
         body,
     }
 }
-
 fn block_to_tac(block: Block, instructions: &mut Vec<TacInstruction>) -> Option<TacVal> {
     let Block::Block(items, final_expr) = block;
 

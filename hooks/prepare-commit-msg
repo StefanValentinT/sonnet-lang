@@ -1,0 +1,13 @@
+#!/bin/bash
+COMMIT_MSG_FILE=$1
+
+cargo test --quiet
+RESULT=$?
+
+if [ $RESULT -eq 0 ]; then
+    EMOJI="🟢"
+else
+    EMOJI="🔴"
+fi
+
+sed -i ".bak" "1s/^/$EMOJI /" "$COMMIT_MSG_FILE"
