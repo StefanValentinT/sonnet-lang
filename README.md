@@ -1,6 +1,6 @@
 # Haiku
 
-This is the *Haiku Compiler*.
+This is the the compiler for the Haiku Language.
 
 Installing it is easy with nix, the best package manager (and linux distro) in the world.
 Just run the following command in your terminal to get the latest version:
