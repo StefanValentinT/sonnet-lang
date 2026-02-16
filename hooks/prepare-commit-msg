@@ -1,13 +1,14 @@
 #!/bin/bash
 COMMIT_MSG_FILE=$1
 
+echo "Checking code quality..."
 cargo test --quiet
 RESULT=$?
 
 if [ $RESULT -eq 0 ]; then
-    EMOJI="🟢"
+    STATUS="[P]"
 else
-    EMOJI="🔴"
+    STATUS="[F]"
 fi
 
-sed -i ".bak" "1s/^/$EMOJI /" "$COMMIT_MSG_FILE"
+sed -i "" "1s/^/$STATUS /" "$COMMIT_MSG_FILE"
