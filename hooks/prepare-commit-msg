@@ -11,4 +11,4 @@ else
     STATUS="[F]"
 fi
 
-sed -i "" "1s/^/$STATUS /" "$COMMIT_MSG_FILE"
+sed -i "" "1s/$/ $STATUS/" "$COMMIT_MSG_FILE"
