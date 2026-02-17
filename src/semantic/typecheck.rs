@@ -157,9 +157,16 @@ fn typecheck_block(block: &Block, ctx: &mut Context) -> Block {
                 let init_ty = init.ty.clone().expect("Initializer must have a type");
 
                 if let Some(ref annotated_ty) = declared_ty {
-                    if annotated_ty != &init_ty {
+                    // TODO: THE HACK
+                    let can_narrow = match (annotated_ty, &init_ty) {
+                        (_, Type::Type) => true,
+                        (Type::Pointer { .. }, Type::Pointer { referenced }) if **referenced == Type::Type => true,
+                        (a, b) => a == b,
+                    };
+
+                    if !can_narrow {
                         panic!(
-                            "Type Mismatch in Decl: Variable '{}' declared as {}, but initialized with {}",
+                            "Type Mismatch in Declaration: Variable '{}' declared as {}, but got {}",
                             v.name, annotated_ty, init_ty
                         );
                     }
@@ -344,6 +351,32 @@ fn typecheck_expr(expr: &Expr, ctx: &mut Context) -> Expr {
         }
         ExprKind::FunctionCall(name, args) => {
             let typed_args: Vec<Expr> = args.iter().map(|a| typecheck_expr(a, ctx)).collect();
+
+            // TODO: Temporary hack - needs proper thought
+            if name == "mem_alloc" {
+                if typed_args.len() != 1 {
+                    panic!("mem_alloc expects exactly 1 argument (a Type)");
+                }
+
+                let inner_ty = match &typed_args[0].kind {
+                    ExprKind::TypeExpr(t) => t.clone(),
+                    _ => panic!(
+                        "mem_alloc expects a Type (e.g., mem_alloc(I32)), got {:?}",
+                        typed_args[0].ty
+                    ),
+                };
+
+                let return_ty = Type::Pointer {
+                    referenced: Box::new(inner_ty),
+                };
+
+                return Expr {
+                    kind: ExprKind::FunctionCall(name.clone(), typed_args),
+                    ty: Some(return_ty),
+                };
+            }
+            // TODO: End of temporary hack - when will I fix this?
+
             let arg_tys: Vec<Type> = typed_args.iter().map(|a| a.ty.clone().unwrap()).collect();
 
             let (target_decl, final_subst) = {

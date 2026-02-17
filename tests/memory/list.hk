@@ -1,0 +1,23 @@
+fun main() I32 {
+    let node1: Ref I32 = mem_alloc(I32);
+    let node2: Ref I32 = mem_alloc(I32);
+    
+    deref node1 = 10;
+    deref node2 = 20;
+    
+    let head: Ref Ref I32 = mem_alloc(Ref I32);
+    
+    deref head = node1;
+    let first_val: I32 = deref (deref head);
+    
+    deref head = node2;
+    let second_val: I32 = deref (deref head);
+    
+    first_val + second_val
+}
+
+#[
+<expect_skip>
+30
+</expect_skip>
+]#

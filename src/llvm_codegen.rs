@@ -122,7 +122,8 @@ fn emit_function(
 }
 fn llvm_stdlib() -> String {
     r#"
-        ; Here code could be that can only be made in LLVM and not in the C runtime.
+declare i8* @internal_alloc(i64)
+declare void @putchar(i32)
 "#
     .into()
 }
@@ -407,20 +408,34 @@ fn emit_instr(
                     ));
                 }
                 TacVal::Var(name, ty) => {
-                    let r = make_register();
                     let llvm_ty = llvm_type(ty);
+                    let r = make_register();
 
                     ir.push_str(&format!(
-                        "  {} = call {} @{}({})\n  store {} {}, {}* %{}\n",
+                        "  {} = call {} @{}({})\n",
                         r,
                         llvm_ty,
                         fun_name,
-                        arg_list.join(", "),
-                        llvm_ty,
-                        r,
-                        llvm_ty,
-                        name
+                        arg_list.join(", ")
                     ));
+
+                    let decl_ty_str = llvm_type(ty);
+                    if llvm_ty != decl_ty_str {
+                        let casted = make_register();
+                        ir.push_str(&format!(
+                            "  {} = bitcast {} {} to {}\n",
+                            casted, llvm_ty, r, decl_ty_str
+                        ));
+                        ir.push_str(&format!(
+                            "  store {} {}, {}* %{}\n",
+                            decl_ty_str, casted, decl_ty_str, name
+                        ));
+                    } else {
+                        ir.push_str(&format!(
+                            "  store {} {}, {}* %{}\n",
+                            llvm_ty, r, llvm_ty, name
+                        ));
+                    }
                 }
                 _ => unreachable!(),
             }

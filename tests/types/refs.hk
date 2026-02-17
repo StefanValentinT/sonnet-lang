@@ -1,0 +1,22 @@
+fun id(x: a) a {
+    x
+}
+
+fun main() I32 {
+    let val: I32 = 42;
+    
+    let ptr: Ref I32 = ref  val;
+    let ptr_identity: Ref I32 = id(ptr);
+    
+    let ptr_to_ptr: Ref Ref I32 = ref ptr;
+    let nested_identity: Ref Ref I32 = id(ptr_to_ptr);
+    
+    let result: I32 = deref (deref nested_identity);
+    
+    result - 12 }
+
+#[
+<expect_ret>
+30
+</expect_ret>
+]#

@@ -43,3 +43,7 @@ Slice show_unit() {
     heap[1] = ')';
     return (Slice){ heap, 2 };
 }
+
+void* internal_alloc(size_t size) {
+    return malloc(size);
+}

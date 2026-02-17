@@ -21,10 +21,19 @@ pub fn rename_tac_program(program: TacProgram) -> TacProgram {
         }
     }
 
-    let renamed_funcs = funcs
+    let filtered_funcs: Vec<TacFuncDef> = funcs
+        .into_iter()
+        .filter(|f| {
+            let TacFuncDef::Function { name, .. } = f;
+            name == "main" || !is_stdlib_fun(name)
+        })
+        .collect();
+
+    let renamed_funcs = filtered_funcs
         .into_iter()
         .map(|f| rename_func(f, &function_map))
         .collect();
+
     TacProgram::Program(renamed_funcs)
 }
 

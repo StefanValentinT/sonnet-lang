@@ -335,16 +335,23 @@ fn parse_factor(tokens: &mut Queue<Token>) -> Expr {
         }
 
         Token::Keyword(ref s)
-            if ["I32", "I64", "F64", "Char", "Unit", "Type"].contains(&s.as_str()) =>
+            if ["I32", "I64", "F64", "Char", "Unit", "Type", "Ref"].contains(&s.as_str()) =>
         {
-            let ty = match s.as_str() {
-                "I32" => Type::I32,
-                "I64" => Type::I64,
-                "F64" => Type::F64,
-                "Char" => Type::Char,
-                "Unit" => Type::Unit,
-                "Type" => Type::Type,
-                _ => unreachable!(),
+            let ty = if s == "Ref" {
+                let inner = parse_type(tokens);
+                Type::Pointer {
+                    referenced: Box::new(inner),
+                }
+            } else {
+                match s.as_str() {
+                    "I32" => Type::I32,
+                    "I64" => Type::I64,
+                    "F64" => Type::F64,
+                    "Char" => Type::Char,
+                    "Unit" => Type::Unit,
+                    "Type" => Type::Type,
+                    _ => unreachable!(),
+                }
             };
             Expr {
                 ty: Some(Type::Type),

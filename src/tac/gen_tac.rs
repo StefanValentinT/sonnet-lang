@@ -1,6 +1,6 @@
 use crate::ast::untyped_ast::*;
 use crate::gen_names::*;
-use crate::stdlib::is_stdlib_fun;
+use crate::stdlib::{comp_stdlib_fun, is_stdlib_fun};
 use crate::tac::ast::*;
 
 pub fn gen_tac(program: Program) -> TacProgram {
@@ -239,11 +239,35 @@ fn expr_to_tac(expr: Expr, instructions: &mut Vec<TacInstruction>) -> TacVal {
 
             result
         }
-        ExprKind::FunctionCall(name, args) => {
+        ExprKind::FunctionCall(name, mut args) => {
+            if comp_stdlib_fun(&name, "mem_alloc") {
+                let type_arg = match args.remove(0).kind {
+                    ExprKind::TypeExpr(t) => t,
+                    _ => panic!("mem_alloc expects a type"),
+                };
+                let size = sizeof(&type_arg);
+
+                let tmp_ptr = TacVal::Var(make_temporary(), Type::Type);
+                instructions.push(TacInstruction::FunCall {
+                    fun_name: "internal_alloc".to_string(),
+                    args: vec![TacVal::Constant(TacConst::I64(size as i64))],
+                    dest: tmp_ptr.clone(),
+                });
+
+                let typed_ptr = TacVal::Var(make_temporary(), expr.ty.unwrap());
+
+                instructions.push(TacInstruction::Copy {
+                    src: tmp_ptr,
+                    dest: typed_ptr.clone(),
+                });
+
+                return typed_ptr;
+            }
             let arg_vals = args
                 .into_iter()
                 .map(|a| expr_to_tac(a, instructions))
                 .collect();
+
             let dst = TacVal::Var(make_temporary(), expr.ty.unwrap());
             instructions.push(TacInstruction::FunCall {
                 fun_name: name,
