@@ -1,0 +1,18 @@
+type Point {
+    Point{x : I32, y : I32}
+}
+
+
+fun main() I32{
+    let p : Point = Point.Point{
+        x = 0,
+        y = 5
+    };
+    p.x
+}
+
+#[
+  <expect_ret>
+5
+</expet_ret>  
+]#

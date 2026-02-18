@@ -6,13 +6,70 @@ use crate::{
 
 pub fn parse(tokens: Queue<Token>) -> Program {
     let mut tokens = tokens;
-    let mut funcs = Vec::new();
+    let mut tops = Vec::new();
 
     while tokens.peek().unwrap() != Token::EOF {
-        funcs.push(parse_fun_decl(&mut tokens));
+        tops.push(parse_top_decl(&mut tokens));
     }
 
-    Program::Program(funcs)
+    Program::Program(tops)
+}
+
+fn parse_top_decl(tokens: &mut Queue<Token>) -> TopDecl {
+    match tokens.peek().unwrap() {
+        Token::Keyword(ref s) if s == "type" => TopDecl::DataType(parse_type_decl(tokens)),
+        Token::Keyword(ref s) if s == "fun" || s == "cofun" => {
+            TopDecl::Function(parse_fun_decl(tokens))
+        }
+        t => panic!("Unexpected top-level token {:?}", t),
+    }
+}
+
+fn parse_type_decl(tokens: &mut Queue<Token>) -> TypeDecl {
+    expect(Token::Keyword("type".into()), tokens);
+
+    let name = match tokens.remove().unwrap() {
+        Token::Identifier(n) => n,
+        t => panic!("Expected type name, got {:?}", t),
+    };
+
+    expect(Token::OpenBrace, tokens);
+
+    let mut constructors = Vec::new();
+
+    while tokens.peek().unwrap() != Token::CloseBrace {
+        constructors.push(parse_constructor(tokens));
+    }
+
+    expect(Token::CloseBrace, tokens);
+
+    TypeDecl { name, constructors }
+}
+
+fn parse_constructor(tokens: &mut Queue<Token>) -> TypeConstructor {
+    let name = match tokens.remove().unwrap() {
+        Token::Identifier(n) => n,
+        t => panic!("Expected constructor name, got {:?}", t),
+    };
+    expect(Token::OpenBrace, tokens);
+    let mut params = Vec::new();
+    while tokens.peek().unwrap() != Token::CloseBrace {
+        let field_name = match tokens.remove().unwrap() {
+            Token::Identifier(n) => n,
+            t => panic!("Expected field name, got {:?}", t),
+        };
+
+        expect(Token::Colon, tokens);
+        let ty = parse_type(tokens);
+
+        params.push((field_name, ty));
+
+        if tokens.peek().unwrap() == Token::Comma {
+            tokens.consume();
+        }
+    }
+    expect(Token::CloseBrace, tokens);
+    TypeConstructor { name, params }
 }
 
 fn parse_fun_decl(tokens: &mut Queue<Token>) -> FunDecl {
@@ -88,7 +145,7 @@ fn parse_type(tokens: &mut Queue<Token>) -> Type {
             if name.chars().next().unwrap().is_lowercase() {
                 Type::TypeVar(name)
             } else {
-                panic!("Unknown type identifier {}", name)
+                Type::Named(name)
             }
         }
         Token::Keyword(ref s) if s == "Ref" => {
@@ -391,6 +448,18 @@ fn parse_expr(tokens: &mut Queue<Token>, min_prec: i32) -> Expr {
                 left = Expr {
                     ty: None,
                     kind: ExprKind::ArrayIndex(Box::new(left), Box::new(index)),
+                };
+            }
+            Token::Dot => {
+                tokens.consume();
+                let field = match tokens.remove().unwrap() {
+                    Token::Identifier(n) => n,
+                    t => panic!("Expected field name after '.', got {:?}", t),
+                };
+
+                left = Expr {
+                    ty: None,
+                    kind: ExprKind::FieldAccess(Box::new(left), field),
                 };
             }
             _ => break,

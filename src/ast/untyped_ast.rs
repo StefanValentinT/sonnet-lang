@@ -22,6 +22,7 @@ pub enum Type {
     },
     TypeVar(String),
     Type,
+    Named(String),
 }
 
 impl Display for Type {
@@ -50,6 +51,7 @@ impl Display for Type {
                 write!(f, ") -> {}", ret.clone().unwrap_or(Type::Unit))
             }
             Type::Type => write!(f, "Type"),
+            Type::Named(v) => write!(f, "{}", v),
         }
     }
 }
@@ -96,7 +98,7 @@ pub enum BinaryOp {
 
 #[derive(Debug)]
 pub enum Program {
-    Program(Vec<FunDecl>),
+    Program(Vec<TopDecl>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,12 +119,30 @@ pub enum Initializer {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TopDecl {
+    Function(FunDecl),
+    DataType(TypeDecl),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunDecl {
     pub name: String,
     pub params: Vec<(String, Option<Type>)>,
     pub body: Option<Block>,
     pub ret_type: Option<Type>,
     pub exec_time: ExecTime,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeDecl {
+    pub name: String,
+    pub constructors: Vec<TypeConstructor>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeConstructor {
+    pub name: String,
+    pub params: Vec<(String, Type)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,4 +186,6 @@ pub enum ExprKind {
     Cast { expr: Box<Expr>, target: Type },
 
     TypeExpr(Type),
+
+    FieldAccess(Box<Expr>, String),
 }
