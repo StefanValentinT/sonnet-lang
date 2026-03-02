@@ -1,0 +1,5 @@
+fib = fun n -> if n < 2 then n else fib (sub {a = n, b=1}) + fib (n-2);
+
+sub = fun args -> args.a - args.b;
+
+main = print (fib n);
