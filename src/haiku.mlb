@@ -1,5 +1,0 @@
-$(SML_LIB)/basis/basis.mlb
-lexer.sml
-parser.sml
-typechecker.sml
-main.sml

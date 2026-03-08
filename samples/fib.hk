@@ -1,5 +1,26 @@
-fib = fun n -> if n < 2 then n else fib (sub {a = n, b=1}) + fib (n-2);
-
 sub = fun args -> args.a - args.b;
 
-main = print (fib n);
+sub_typed [ {ab [I32], b [I32]} -> I32] = fun -> args.a - args.b;
+
+fib [I32 -> I32 ] = fun n -> 
+    if n < 2 
+    then n 
+    else fib (n - 1) + fib (n - 2);
+
+id = (fun x -> x);
+
+Pos = type of Pos {x [I32], y [I32]};
+
+Nat = con Z | con S n[Nat];
+
+is_zero = fun n -> n == 0;
+
+main = {
+    val1 = 10;
+    val2 = id 20;
+    res = sub {a = val1, b = val2};
+    check = is_zero res == (id true);
+
+    pos = Pos.Pos {x = 0, y = 5};
+    nat = Nat.S (type of Z | S Nat).Z;
+};
