@@ -1,6 +1,9 @@
+mod ast;
 mod lexer;
+mod parser;
 
 use crate::lexer::tokenize;
+use crate::parser::parse;
 use std::env;
 use std::fs;
 
@@ -24,5 +27,9 @@ fn main() {
     println!("Source:\n{}", content);
 
     let tokens = tokenize(&content);
-    println!("\nTokens: {:#?}", tokens);
+    println!("\nTokens: {:?}", tokens);
+
+    let ast = parse(tokens);
+
+    println!("Ast:\n{:#?}", ast);
 }

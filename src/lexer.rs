@@ -1,12 +1,18 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Lexem {
-    LowerIdentifier(String),
-    UpperIdentifier(String),
+    Identifier(String),
     I32(i32),
     Assign,
     KeyFun,
+    KeyIota,
+    KeyCase,
     KeyOf,
+    KeyNeg,
+    KeyDo,
+    KeyEnd,
+    Underscore,
     Arrow,
+    DoubleArrow,
     OpenParen,
     CloseParen,
     OpenBrace,
@@ -22,12 +28,13 @@ pub enum Lexem {
     SymPlus,
     SymStar,
     SymSlash,
+    SymPercent,
     SymEqual,
     SymNotEqual,
-    SymBigger,
+    SymGreater,
     SymLess,
     SymLessEqual,
-    SymBiggerEqual,
+    SymGreaterEqual,
 }
 
 pub fn is_letter(c: char) -> bool {
@@ -80,6 +87,21 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
             continue;
         }
 
+        if c == '#' {
+            i += 1;
+            if i < chars.len() && is_whitespace(chars[i]) {
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+                continue;
+            } else {
+                panic!(
+                    "'#' must be followed by whitespace to start a comment at index {}",
+                    i - 1
+                );
+            }
+        }
+
         let next_char = if i + 1 < chars.len() {
             Some(chars[i + 1])
         } else {
@@ -91,6 +113,9 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
                 if next_char == Some('=') {
                     i += 1;
                     Lexem::SymEqual
+                } else if next_char == Some('>') {
+                    i += 1;
+                    Lexem::DoubleArrow
                 } else {
                     Lexem::Assign
                 }
@@ -115,6 +140,7 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
             }
 
             '(' => Lexem::OpenParen,
+            '_' => Lexem::Underscore,
             ')' => Lexem::CloseParen,
             '{' => Lexem::OpenBrace,
             '}' => Lexem::CloseBrace,
@@ -130,6 +156,7 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
             '+' => Lexem::SymPlus,
             '*' => Lexem::SymStar,
             '/' => Lexem::SymSlash,
+            '%' => Lexem::SymPercent,
 
             '<' => {
                 if next_char == Some('=') {
@@ -143,9 +170,9 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
             '>' => {
                 if next_char == Some('=') {
                     i += 1;
-                    Lexem::SymBiggerEqual
+                    Lexem::SymGreaterEqual
                 } else {
-                    Lexem::SymBigger
+                    Lexem::SymGreater
                 }
             }
 
@@ -155,15 +182,13 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
 
                 match id.as_str() {
                     "fun" => Lexem::KeyFun,
+                    "iota" => Lexem::KeyIota,
+                    "case" => Lexem::KeyCase,
                     "of" => Lexem::KeyOf,
-                    _ => {
-                        let first = id.chars().next().unwrap();
-                        if first.is_ascii_uppercase() {
-                            Lexem::UpperIdentifier(id)
-                        } else {
-                            Lexem::LowerIdentifier(id)
-                        }
-                    }
+                    "neg" => Lexem::KeyNeg,
+                    "do" => Lexem::KeyDo,
+                    "end" => Lexem::KeyEnd,
+                    _ => Lexem::Identifier(id),
                 }
             }
 
