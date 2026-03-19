@@ -1,9 +1,11 @@
 mod ast;
 mod lexer;
 mod parser;
+mod typer;
 
 use crate::lexer::tokenize;
 use crate::parser::parse;
+//use crate::typer::type;
 use std::env;
 use std::fs;
 
@@ -32,4 +34,8 @@ fn main() {
     let ast = parse(tokens);
 
     println!("Ast:\n{:#?}", ast);
+
+    //let typed_ast = type(ast);
+
+    //println!("Typed Ast:\n{:#?}", ast);
 }

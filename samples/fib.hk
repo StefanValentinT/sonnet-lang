@@ -11,7 +11,9 @@ fib [I32 -> I32] = fun n ->
 
 id = (fun x -> x);
 
-id2 [Top -> Top] = fun x -> x;
+id2 [a -> a] = fun x -> x;
+
+id3 [Top -> Top] = fun x -> x;
 
 # will crash
 fail [I32 -> Bottom] = fun x -> x / 0;
@@ -33,11 +35,15 @@ add_nat = fun {a, b} -> case a of
     Z => b,
     S n => add_nat {a=n, b=(S b)};
 
-is_zero = fun n -> n == 0;
+is_zero = fun n -> case n of _ [I32] => if {cond=(n == 0),then=true {}, else=false {}}, _ => false {}; 
 
 safe_div = fun args [ { num [I32], den [I32 & neg 0] } ] -> 
     args.num / args.den;
-    
+
+div = fun {a,b} ->
+    case b of
+        0 => {},
+        _ => safe_div {num=a, den=b};
 main =
     do
         val1 = 10;

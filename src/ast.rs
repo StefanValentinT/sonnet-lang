@@ -15,6 +15,21 @@ pub enum Term {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TypedTerm {
+    Ident(String, Type),
+    Lit(Literal, Type),
+    Def(TypedPattern, Box<TypedTerm>, Type),
+    Fun(TypedPattern, Box<TypedTerm>, Type),
+    Bin(BinOp, Box<TypedTerm>, Box<TypedTerm>, Type),
+    FieldAccess(Box<TypedTerm>, String, Type),
+    CaseOf(Box<TypedTerm>, Vec<(TypedPattern, Term, Type)>),
+    RecordVal(Vec<(String, TypedTerm)>, Type),
+    App(Box<TypedTerm>, Box<TypedTerm>, Type),
+    TypeExpr(Type),
+    Compound(Vec<TypedTerm>, Type),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
     TypeIdent(String),
     Union(Box<Type>, Box<Type>),
@@ -31,10 +46,19 @@ pub enum Type {
 pub enum Pattern {
     PatternIdent(String),
     Wildcard,
-    PatternLit(Literal),
     RecordPattern(Vec<Pattern>),
     PatternApp(Box<Term>, Box<Pattern>),
+    TypePattern(Type),
     PatternTyped(Box<Pattern>, Type),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TypedPattern {
+    PatternIdent(String, Type),
+    Wildcard(Type),
+    PatternLit(Literal, Type),
+    RecordPattern(Vec<TypedPattern>, Type),
+    PatternApp(Box<Term>, Box<TypedPattern>, Type),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]

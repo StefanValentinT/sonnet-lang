@@ -13,7 +13,7 @@ pub fn parse(tokens: Vec<Lexem>) -> Vec<Term> {
 }
 
 // =============================================================================
-// Precedence table (all contexts unified, higher = tighter binding)
+// Precedence table, higher = tighter binding
 //
 //  100  field access         e.f          left
 //   95  type annotation      e[T]         left (postfix-like infix)
@@ -323,7 +323,7 @@ impl Parser {
 
             Some(Lexem::I32(_)) => {
                 if let Some(Lexem::I32(n)) = self.next() {
-                    Pattern::PatternLit(Literal::I32(n))
+                    Pattern::TypePattern(Type::TypeLit(Literal::I32(n)))
                 } else {
                     unreachable!()
                 }
@@ -356,15 +356,26 @@ impl Parser {
                     Some(Lexem::Identifier(s)) => s,
                     _ => unreachable!(),
                 };
-                let var_term = Term::Ident(id.clone());
-                if self.is_pattern_start() {
-                    let arg = self.parse_pattern_bp(91);
-                    Pattern::PatternApp(Box::new(var_term), Box::new(arg))
+
+                if !Self::is_lowercase(&id) {
+                    let ty = Type::TypeIdent(id);
+
+                    if self.is_pattern_start() {
+                        let arg = self.parse_pattern_bp(91);
+                        Pattern::PatternApp(Box::new(Term::TypeExpr(ty)), Box::new(arg))
+                    } else {
+                        Pattern::TypePattern(ty)
+                    }
                 } else {
-                    Pattern::PatternIdent(id)
+                    let var_term = Term::Ident(id.clone());
+                    if self.is_pattern_start() {
+                        let arg = self.parse_pattern_bp(91);
+                        Pattern::PatternApp(Box::new(var_term), Box::new(arg))
+                    } else {
+                        Pattern::PatternIdent(id)
+                    }
                 }
             }
-
             // iota constructor in pattern: iota T  followed by pat
             Some(Lexem::KeyIota) => {
                 self.next();
@@ -447,9 +458,19 @@ impl Parser {
         lhs
     }
 
+    fn is_lowercase(s: &str) -> bool {
+        s.chars().next().map(|c| c.is_lowercase()).unwrap_or(false)
+    }
+
     fn parse_type_prefix(&mut self) -> Type {
         match self.next() {
-            Some(Lexem::Identifier(id)) => Type::TypeIdent(id),
+            Some(Lexem::Identifier(id)) => {
+                if Self::is_lowercase(&id) {
+                    Type::TypeVar(id)
+                } else {
+                    Type::TypeIdent(id)
+                }
+            }
             Some(Lexem::I32(n)) => Type::TypeLit(Literal::I32(n)),
             Some(Lexem::KeyNeg) => Type::Neg(Box::new(self.parse_type(90))),
 
@@ -496,7 +517,7 @@ impl Parser {
     fn term_to_pattern(&self, t: Term) -> Pattern {
         match t {
             Term::Ident(id) => Pattern::PatternIdent(id),
-            Term::Lit(l) => Pattern::PatternLit(l),
+            Term::Lit(l) => Pattern::TypePattern(Type::TypeLit(l)),
             Term::App(f, arg) => Pattern::PatternApp(f, Box::new(self.term_to_pattern(*arg))),
             Term::Typed(inner, ty) => {
                 Pattern::PatternTyped(Box::new(self.term_to_pattern(*inner)), ty)
