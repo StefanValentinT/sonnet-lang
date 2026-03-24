@@ -1,60 +1,57 @@
 # until end of line
 
-sub = fun args -> args.a - args.b;
+def sub = fun args -> args.a - args.b;
 
-sub_typed [ {ab [I32], b [I32]} -> I32] = fun args -> args.a - args.b;
+def sub_typed [ {a [I32], b [I32]} -> I32] = fun args -> args.a - args.b;
 
-fib [I32 -> I32] = fun n ->
+def fib [I32 -> I32] = fun n ->
     case n < 2 of
-        true {}  => n,
-        false {} => fib (n - 1) + fib (n - 2);
+        True {}  => n,
+        False {} => fib (n - 1) + fib (n - 2);
 
-id = (fun x -> x);
+def id = (fun x -> x);
 
-id2 [a -> a] = fun x -> x;
+def id2 [a -> a] = fun x -> x;
 
-id3 [Top -> Top] = fun x -> x;
+def id3 [Top -> Top] = fun x -> x;
 
-# will crash
-fail [I32 -> Bottom] = fun x -> x / 0;
+type Pos = iota {x [I32], y [I32]};
 
-Pos = iota {x [I32], y [I32]};
+type True = iota {};
+type False = iota {};
+type Bool = True | False;
 
-true = iota {};
-false = iota {};
+def if = fun {cond, then, else} -> case cond of
+    True {} => then,
+    False {} => else;
+    
 
-if = fun {cond, then, else} -> case cond of
-    true {} => then,
-    false {} => else;
+type Z = iota {};
+type S = iota Nat;
+type Nat = Z | S;
 
-Z = iota {};
-S = iota Nat;
-Nat = Z | S;
-
-add_nat = fun {a, b} -> case a of
+def add_nat = fun {a, b} -> case a of
     Z => b,
     S n => add_nat {a=n, b=(S b)};
 
-is_zero = fun n -> case n of _ [I32] => if {cond=(n == 0),then=true {}, else=false {}}, _ => false {}; 
+def is_zero = fun n -> case n of _ [I32] => if {cond=(n == 0),then=True {}, else=False {}}, _ => False {}; 
 
-safe_div = fun args [ { num [I32], den [I32 & neg 0] } ] -> 
+def safe_div = fun args [ { num [I32], den [I32 & neg 0] } ] -> 
     args.num / args.den;
 
-div = fun {a,b} ->
+def div = fun {a,b} ->
     case b of
         0 => {},
         _ => safe_div {num=a, den=b};
-main =
-    do
+
+def main = do
         val1 = 10;
         val2 = id 20;
         res = sub {a = val1, b = val2};
-        check = is_zero res == (id true);
+        check = is_zero res == (id True);
 
         pos = Pos {x = 0, y = 5};
         nat = S Z;
 
         good = safe_div {num = 12, den = 6};
-        # will crash
-        bad = safe_div {num=12, den = 0};
     end;

@@ -8,13 +8,14 @@ fn next_iota_id() -> u64 {
     IOTA_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-pub fn parse(tokens: Vec<Lexem>) -> Vec<Term> {
-    Parser::new(tokens).parse_all()
+pub fn parse(tokens: Vec<Lexem>) -> Program {
+    Parser::new(tokens).parse_program()
 }
 
 // =============================================================================
 // Precedence table, higher = tighter binding
 //
+// Term-level operators:
 //  100  field access         e.f          left
 //   95  type annotation      e[T]         left (postfix-like infix)
 //   90  function application e a          left (juxtaposition)
@@ -23,7 +24,7 @@ pub fn parse(tokens: Vec<Lexem>) -> Vec<Term> {
 //   50  == != < <= > >=                   left
 //   10  definition           lhs = rhs    right
 //
-// Type-level operators (parsed separately but same philosophy):
+// Type-level operators:
 //   80  &   intersection     left
 //   70  |   union            left
 //   60  ->  function arrow   right
@@ -58,15 +59,47 @@ impl Parser {
         }
     }
 
-    pub fn parse_all(&mut self) -> Vec<Term> {
-        let mut res = Vec::new();
-        while self.peek().is_some() {
-            res.push(self.parse_term(0));
+   pub fn parse_program(&mut self) -> Program {
+        let mut program = Program { terms: Vec::new(), types: Vec::new() };
+
+        while let Some(tok) = self.peek() {
+            match tok {
+                Lexem::KeyDef => {
+                    self.next(); // consume 'def'
+                    let (pat, term) = self.parse_top_level_def();
+                    program.terms.push((pat, term));
+                }
+                Lexem::KeyType => {
+                    self.next(); // consume 'type'
+                    let (name, ty) = self.parse_top_level_type();
+                    program.types.push((name, ty));
+                }
+                _ => {
+                    panic!("Top level item not a definition!")
+                }
+            }
             if self.peek() == Some(&Lexem::Semicolon) {
                 self.next();
             }
         }
-        res
+        program
+    }
+fn parse_top_level_def(&mut self) -> (Pattern, Term) {
+        let mut pat = self.parse_pattern();
+        
+        self.expect(Lexem::Assign);
+        let rhs = self.parse_term(0);
+        (pat, rhs)
+    }
+
+    fn parse_top_level_type(&mut self) -> (String, Type) {
+        let name = match self.next() {
+            Some(Lexem::Identifier(n)) => n,
+            t => panic!("Expected type name after 'type', got {:?}", t),
+        };
+        self.expect(Lexem::Assign);
+        let ty = self.parse_type(0);
+        (name, ty)
     }
 
     fn parse_term(&mut self, min_bp: u8) -> Term {
@@ -175,21 +208,7 @@ impl Parser {
                 Lexem::Assign => {
                     let pat = self.term_to_pattern(lhs);
                     let rhs = self.parse_term(r_bp);
-                    Term::Def(pat, Box::new(rhs))
-                }
-                Lexem::SymBar => {
-                    let rhs = self.parse_term(r_bp);
-                    Term::TypeExpr(Type::Union(
-                        Box::new(self.term_to_type(lhs)),
-                        Box::new(self.term_to_type(rhs)),
-                    ))
-                }
-                Lexem::SymAmp => {
-                    let rhs = self.parse_term(r_bp);
-                    Term::TypeExpr(Type::Inter(
-                        Box::new(self.term_to_type(lhs)),
-                        Box::new(self.term_to_type(rhs)),
-                    ))
+                    Term::VarDef(pat, Box::new(rhs))
                 }
                 _ => unreachable!(),
             };
@@ -253,11 +272,6 @@ impl Parser {
             // record val: { field = val, ... }
             Some(Lexem::OpenBrace) => self.parse_record_value(),
 
-            // TypeExpr ( iota <type> )
-            Some(Lexem::KeyIota) => {
-                let ty = self.parse_type(0);
-                Term::TypeExpr(Type::Iota(next_iota_id(), Box::new(ty)))
-            }
 
             t => panic!("Unexpected token in term position: {:?}", t),
         }
@@ -290,129 +304,68 @@ impl Parser {
 
     fn parse_pattern_bp(&mut self, min_bp: u8) -> Pattern {
         let mut lhs = self.parse_pattern_prefix();
-
-        loop {
-            let op = match self.peek() {
-                Some(t) => t.clone(),
-                None => break,
-            };
-
-            if op == Lexem::OpenSquare {
-                if 95 < min_bp {
-                    break;
-                }
-                self.next();
-                let ty = self.parse_type(0);
-                self.expect(Lexem::CloseSquare);
-                lhs = Pattern::PatternTyped(Box::new(lhs), ty);
-                continue;
-            }
-
-            break;
+        while let Some(Lexem::OpenSquare) = self.peek() {
+            if 95 < min_bp { break; }
+            self.next();
+            let ty = self.parse_type(0);
+            self.expect(Lexem::CloseSquare);
+            lhs = Pattern::PatternTyped(Box::new(lhs), ty);
         }
-
         lhs
     }
 
     fn parse_pattern_prefix(&mut self) -> Pattern {
         match self.peek() {
-            Some(Lexem::Underscore) => {
-                self.next();
-                Pattern::Wildcard
+            Some(Lexem::Underscore) => { self.next(); Pattern::Wildcard }
+            Some(Lexem::I32(n)) => {
+                let val = *n; self.next();
+                Pattern::TypePattern(Type::TypeLit(Literal::I32(val)))
             }
 
-            Some(Lexem::I32(_)) => {
-                if let Some(Lexem::I32(n)) = self.next() {
-                    Pattern::TypePattern(Type::TypeLit(Literal::I32(n)))
-                } else {
-                    unreachable!()
-                }
-            }
-
-            // record pattern: { a, b, ... }
             Some(Lexem::OpenBrace) => {
                 self.next();
-                self.parse_record_pattern_body()
-            }
-
-            // parenthesised — could be (iota T) which becomes a constructor term
-            Some(Lexem::OpenParen) => {
-                self.next();
-                let inner_term = self.parse_term(0);
-                self.expect(Lexem::CloseParen);
-                // pattern atom -> constructor application
-                if self.is_pattern_start() {
-                    let arg = self.parse_pattern_bp(91);
-                    Pattern::PatternApp(Box::new(inner_term), Box::new(arg))
-                } else {
-                    // bare parenthesised term used as a pattern (can be a literal or var)
-                    self.term_to_pattern(inner_term)
+                let mut fields = Vec::new();
+                while self.peek() != Some(&Lexem::CloseBrace) {
+                    fields.push(self.parse_pattern());
+                    if self.peek() == Some(&Lexem::Comma) { self.next(); }
                 }
+                self.expect(Lexem::CloseBrace);
+                Pattern::RecordPattern(fields)
             }
 
-            // identifier: could be a plain variable or a constructor followed by a pat
-            Some(Lexem::Identifier(_)) => {
-                let id = match self.next() {
-                    Some(Lexem::Identifier(s)) => s,
-                    _ => unreachable!(),
-                };
-
-                if !Self::is_lowercase(&id) {
-                    let ty = Type::TypeIdent(id);
-
+            Some(Lexem::Identifier(id)) => {
+                let name = id.clone(); self.next();
+                if !Self::is_lowercase(&name) {
+                    let ty = Type::TypeIdent(name);
                     if self.is_pattern_start() {
-                        let arg = self.parse_pattern_bp(91);
-                        Pattern::PatternApp(Box::new(Term::TypeExpr(ty)), Box::new(arg))
+                        Pattern::PatternApp(ty, Box::new(self.parse_pattern_bp(91)))
                     } else {
                         Pattern::TypePattern(ty)
                     }
                 } else {
-                    let var_term = Term::Ident(id.clone());
-                    if self.is_pattern_start() {
-                        let arg = self.parse_pattern_bp(91);
-                        Pattern::PatternApp(Box::new(var_term), Box::new(arg))
-                    } else {
-                        Pattern::PatternIdent(id)
-                    }
+                    Pattern::PatternIdent(name)
                 }
             }
-            // iota constructor in pattern: iota T  followed by pat
+
             Some(Lexem::KeyIota) => {
                 self.next();
                 let ty = self.parse_type(0);
-                let ctor = Term::TypeExpr(Type::Iota(next_iota_id(), Box::new(ty)));
                 if self.is_pattern_start() {
-                    let arg = self.parse_pattern_bp(91);
-                    Pattern::PatternApp(Box::new(ctor), Box::new(arg))
+                    Pattern::PatternApp(ty, Box::new(self.parse_pattern_bp(91)))
                 } else {
-                    panic!(
-                        "Iota has not been provided a pattern, which is necessary for a case expression."
-                    )
+                    Pattern::TypePattern(Type::Iota(next_iota_id(), Box::new(ty)))
                 }
             }
 
-            t => panic!("Unexpected token in pattern position: {:?}", t),
-        }
-    }
-
-    // { a, b, ... }  — opening brace already consumed
-    fn parse_record_pattern_body(&mut self) -> Pattern {
-        let mut fields = Vec::new();
-        while self.peek() != Some(&Lexem::CloseBrace) {
-            if self.peek().is_none() {
-                panic!("Unexpected EOF in record pattern");
-            }
-            let name = match self.next() {
-                Some(Lexem::Identifier(n)) => n,
-                t => panic!("Expected field name in record pattern, got {:?}", t),
-            };
-            fields.push(Pattern::PatternIdent(name));
-            if self.peek() == Some(&Lexem::Comma) {
+            Some(Lexem::OpenParen) => {
                 self.next();
+                let p = self.parse_pattern();
+                self.expect(Lexem::CloseParen);
+                p
             }
+
+            t => panic!("Unexpected pattern: {:?}", t),
         }
-        self.expect(Lexem::CloseBrace);
-        Pattern::RecordPattern(fields)
     }
 
     fn is_pattern_start(&self) -> bool {
@@ -468,7 +421,13 @@ impl Parser {
                 if Self::is_lowercase(&id) {
                     Type::TypeVar(id)
                 } else {
-                    Type::TypeIdent(id)
+                    if id == "Top".to_string() {
+                        Type::Top
+                    } else if id == "Bot".to_string() {
+                        Type::Bot
+                    } else {
+                        Type::TypeIdent(id)
+                    }
                 }
             }
             Some(Lexem::I32(n)) => Type::TypeLit(Literal::I32(n)),
@@ -514,21 +473,29 @@ impl Parser {
         Type::Record(fields)
     }
 
-    fn term_to_pattern(&self, t: Term) -> Pattern {
+   fn term_to_pattern(&self, t: Term) -> Pattern {
         match t {
-            Term::Ident(id) => Pattern::PatternIdent(id),
-            Term::Lit(l) => Pattern::TypePattern(Type::TypeLit(l)),
-            Term::App(f, arg) => Pattern::PatternApp(f, Box::new(self.term_to_pattern(*arg))),
-            Term::Typed(inner, ty) => {
-                Pattern::PatternTyped(Box::new(self.term_to_pattern(*inner)), ty)
+            Term::Ident(id) => {
+                if !Self::is_lowercase(&id) {
+                    Pattern::TypePattern(Type::TypeIdent(id))
+                } else {
+                    Pattern::PatternIdent(id)
+                }
             }
-            Term::RecordVal(fields) => Pattern::RecordPattern(
-                fields
-                    .into_iter()
-                    .map(|(_, v)| self.term_to_pattern(v))
-                    .collect(),
-            ),
-            _ => panic!("Invalid pattern on LHS of definition: {:?}", t),
+            Term::Lit(l) => Pattern::TypePattern(Type::TypeLit(l)),
+            Term::App(f, arg) => {
+                // S Z -> PatternApp(TypeIdent(S), PatternApp(TypeIdent(Z), ...))
+                let ctor_ty = match *f {
+                    Term::Ident(id) => Type::TypeIdent(id),
+                    _ => panic!("Expected constructor name in pattern"),
+                };
+                Pattern::PatternApp(ctor_ty, Box::new(self.term_to_pattern(*arg)))
+            }
+            Term::RecordVal(fields) => {
+                Pattern::RecordPattern(fields.into_iter().map(|(_, v)| self.term_to_pattern(v)).collect())
+            }
+            Term::Typed(inner, ty) => Pattern::PatternTyped(Box::new(self.term_to_pattern(*inner)), ty),
+            _ => panic!("Cannot convert term to pattern: {:?}", t),
         }
     }
 
@@ -545,14 +512,7 @@ impl Parser {
                 | Lexem::KeyIota
         )
     }
-    fn term_to_type(&self, t: Term) -> Type {
-        match t {
-            Term::Ident(id) => Type::TypeIdent(id),
-            Term::TypeExpr(ty) => ty,
-            Term::Lit(l) => Type::TypeLit(l),
-            _ => panic!("Expected type expression, got {:?}", t),
-        }
-    }
+    
 }
 
 /// Left bindingpower and right bindingpower for infix operators.

@@ -3,6 +3,8 @@ pub enum Lexem {
     Identifier(String),
     I32(i32),
     Assign,
+    KeyDef,
+    KeyType,
     KeyFun,
     KeyIota,
     KeyCase,
@@ -181,6 +183,8 @@ pub fn tokenize(input: &str) -> Vec<Lexem> {
                 i = pos - 1;
 
                 match id.as_str() {
+                    "def" => Lexem::KeyDef,
+                    "type" => Lexem::KeyType,
                     "fun" => Lexem::KeyFun,
                     "iota" => Lexem::KeyIota,
                     "case" => Lexem::KeyCase,
