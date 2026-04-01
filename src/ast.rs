@@ -1,6 +1,5 @@
-
 #[derive(Debug)]
-pub struct Program{
+pub struct Program {
     pub terms: Vec<(Pattern, Term)>,
     pub types: Vec<(String, Type)>,
 }
@@ -20,9 +19,10 @@ pub enum Term {
     Compound(Vec<Term>),
 }
 
-pub struct TypedProgram{
-    terms: Vec<(TypedPattern, TypedTerm)>,
-    types: Vec<(String, Type)>,
+#[derive(Debug)]
+pub struct TypedProgram {
+    pub terms: Vec<(TypedPattern, TypedTerm)>,
+    pub types: Vec<(String, Type)>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -90,12 +90,38 @@ impl Type {
     pub fn fun(d: Type, c: Type) -> Self {
         Type::TypeFun(Box::new(d), Box::new(c))
     }
+
     pub fn union(a: Type, b: Type) -> Self {
-        Type::Union(Box::new(a), Box::new(b))
+        if a == b {
+            return a;
+        }
+        match (a, b) {
+            (Type::Bot, other) | (other, Type::Bot) => other,
+            (a, b) => Type::Union(Box::new(a), Box::new(b)),
+        }
     }
+
     pub fn inter(a: Type, b: Type) -> Self {
-        Type::Inter(Box::new(a), Box::new(b))
+        if a == b {
+            return a;
+        }
+        match (a, b) {
+            (Type::Top, other) | (other, Type::Top) => other,
+            (Type::Record(f1), Type::Record(f2)) => {
+                let mut merged = f1;
+                for (name, ty) in f2 {
+                    if let Some(idx) = merged.iter().position(|(n, _)| n == &name) {
+                        merged[idx].1 = Type::inter(merged[idx].1.clone(), ty);
+                    } else {
+                        merged.push((name, ty));
+                    }
+                }
+                Type::Record(merged)
+            }
+            (a, b) => Type::Inter(Box::new(a), Box::new(b)),
+        }
     }
+
     pub fn neg(t: Type) -> Self {
         Type::Neg(Box::new(t))
     }
@@ -103,16 +129,17 @@ impl Type {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Pattern {
-    PatternIdent(String),
-    Wildcard,
+    PatternIdent(String), // var - matches anything
+    Wildcard,             // _
     RecordPattern(Vec<Pattern>),
-    PatternApp(Type, Box<Pattern>),
-    TypePattern(Type),
-    PatternTyped(Box<Pattern>, Type),
+    PatternApp(Type, Box<Pattern>),   // Succ Z
+    TypePattern(Type),                // Z
+    PatternTyped(Box<Pattern>, Type), // the pattern is annotated
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum TypedPattern {
+    PatternIdent(String, Type),
     Wildcard(Type),
     PatternLit(Literal, Type),
     RecordPattern(Vec<TypedPattern>, Type),

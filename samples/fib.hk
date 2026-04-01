@@ -21,9 +21,10 @@ type True = iota {};
 type False = iota {};
 type Bool = True | False;
 
-def if = fun {cond, then, else} -> case cond of
-    True {} => then,
-    False {} => else;
+def if = fun {cond, then, else} ->
+    case cond of
+        True {} => then,
+        False {} => else;
     
 
 type Z = iota {};
@@ -31,10 +32,13 @@ type S = iota Nat;
 type Nat = Z | S;
 
 def add_nat = fun {a, b} -> case a of
-    Z => b,
+    Z {} => b,
     S n => add_nat {a=n, b=(S b)};
 
-def is_zero = fun n -> case n of _ [I32] => if {cond=(n == 0),then=True {}, else=False {}}, _ => False {}; 
+def is_zero = fun n ->
+    case n of
+    I32 => if {cond=(n == 0), then=True {}, else=False {}},
+    _ => False {}; 
 
 def safe_div = fun args [ { num [I32], den [I32 & neg 0] } ] -> 
     args.num / args.den;
@@ -48,10 +52,10 @@ def main = do
         val1 = 10;
         val2 = id 20;
         res = sub {a = val1, b = val2};
-        check = is_zero res == (id True);
+        check = is_zero res == (id (True {}));
 
         pos = Pos {x = 0, y = 5};
-        nat = S Z;
+        nat = S (Z {});
 
         good = safe_div {num = 12, den = 6};
     end;

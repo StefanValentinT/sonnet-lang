@@ -1,11 +1,11 @@
 mod ast;
 mod lexer;
 mod parser;
-//mod typer;
+mod typer;
 
 use crate::lexer::tokenize;
 use crate::parser::parse;
-//use crate::typer::typecheck;
+use crate::typer::typecheck;
 
 use std::env;
 use std::fs;
@@ -15,13 +15,13 @@ fn run_source(source: &str) {
     println!("Source:\n{}", source);
 
     let tokens = tokenize(source);
-    println!("\nTokens: {:?}", tokens);
+    println!("\nTokens: {:#?}", tokens);
 
     let ast = parse(tokens);
     println!("Ast:\n{:#?}", ast);
 
-    //let typed_ast = typecheck(ast);
-    //println!("Typed Ast:\n{:#?}", typed_ast);
+    let typed_ast = typecheck(ast);
+    println!("Typed Ast:\n{:#?}", typed_ast);
 }
 
 fn repl() {

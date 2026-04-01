@@ -59,8 +59,11 @@ impl Parser {
         }
     }
 
-   pub fn parse_program(&mut self) -> Program {
-        let mut program = Program { terms: Vec::new(), types: Vec::new() };
+    pub fn parse_program(&mut self) -> Program {
+        let mut program = Program {
+            terms: Vec::new(),
+            types: Vec::new(),
+        };
 
         while let Some(tok) = self.peek() {
             match tok {
@@ -84,9 +87,9 @@ impl Parser {
         }
         program
     }
-fn parse_top_level_def(&mut self) -> (Pattern, Term) {
+    fn parse_top_level_def(&mut self) -> (Pattern, Term) {
         let mut pat = self.parse_pattern();
-        
+
         self.expect(Lexem::Assign);
         let rhs = self.parse_term(0);
         (pat, rhs)
@@ -272,7 +275,6 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
             // record val: { field = val, ... }
             Some(Lexem::OpenBrace) => self.parse_record_value(),
 
-
             t => panic!("Unexpected token in term position: {:?}", t),
         }
     }
@@ -305,7 +307,9 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
     fn parse_pattern_bp(&mut self, min_bp: u8) -> Pattern {
         let mut lhs = self.parse_pattern_prefix();
         while let Some(Lexem::OpenSquare) = self.peek() {
-            if 95 < min_bp { break; }
+            if 95 < min_bp {
+                break;
+            }
             self.next();
             let ty = self.parse_type(0);
             self.expect(Lexem::CloseSquare);
@@ -316,9 +320,13 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
 
     fn parse_pattern_prefix(&mut self) -> Pattern {
         match self.peek() {
-            Some(Lexem::Underscore) => { self.next(); Pattern::Wildcard }
+            Some(Lexem::Underscore) => {
+                self.next();
+                Pattern::Wildcard
+            }
             Some(Lexem::I32(n)) => {
-                let val = *n; self.next();
+                let val = *n;
+                self.next();
                 Pattern::TypePattern(Type::TypeLit(Literal::I32(val)))
             }
 
@@ -327,14 +335,17 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
                 let mut fields = Vec::new();
                 while self.peek() != Some(&Lexem::CloseBrace) {
                     fields.push(self.parse_pattern());
-                    if self.peek() == Some(&Lexem::Comma) { self.next(); }
+                    if self.peek() == Some(&Lexem::Comma) {
+                        self.next();
+                    }
                 }
                 self.expect(Lexem::CloseBrace);
                 Pattern::RecordPattern(fields)
             }
 
             Some(Lexem::Identifier(id)) => {
-                let name = id.clone(); self.next();
+                let name = id.clone();
+                self.next();
                 if !Self::is_lowercase(&name) {
                     let ty = Type::TypeIdent(name);
                     if self.is_pattern_start() {
@@ -473,7 +484,7 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
         Type::Record(fields)
     }
 
-   fn term_to_pattern(&self, t: Term) -> Pattern {
+    fn term_to_pattern(&self, t: Term) -> Pattern {
         match t {
             Term::Ident(id) => {
                 if !Self::is_lowercase(&id) {
@@ -491,10 +502,15 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
                 };
                 Pattern::PatternApp(ctor_ty, Box::new(self.term_to_pattern(*arg)))
             }
-            Term::RecordVal(fields) => {
-                Pattern::RecordPattern(fields.into_iter().map(|(_, v)| self.term_to_pattern(v)).collect())
+            Term::RecordVal(fields) => Pattern::RecordPattern(
+                fields
+                    .into_iter()
+                    .map(|(_, v)| self.term_to_pattern(v))
+                    .collect(),
+            ),
+            Term::Typed(inner, ty) => {
+                Pattern::PatternTyped(Box::new(self.term_to_pattern(*inner)), ty)
             }
-            Term::Typed(inner, ty) => Pattern::PatternTyped(Box::new(self.term_to_pattern(*inner)), ty),
             _ => panic!("Cannot convert term to pattern: {:?}", t),
         }
     }
@@ -512,7 +528,6 @@ fn parse_top_level_def(&mut self) -> (Pattern, Term) {
                 | Lexem::KeyIota
         )
     }
-    
 }
 
 /// Left bindingpower and right bindingpower for infix operators.
