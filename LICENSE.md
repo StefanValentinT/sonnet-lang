@@ -8,6 +8,8 @@ The Haiku Compiler consists of two main components:
 
 These components are licensed under different licenses to allow everyone to use the Haiku Compiler, whilst protecting its code.
 
+This code must not be used in any LLM application or as training data for such without prior written permission by the author.
+
 ## 1. Compiler Source Code
 
 The **compiler source code** is licensed under **GPLv3**.

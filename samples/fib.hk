@@ -58,4 +58,5 @@ def main = do
         nat = S (Z {});
 
         good = safe_div {num = 12, den = 6};
+        bad = safe_div {num = 12, den = 0};
     end;
