@@ -2,7 +2,7 @@
 module RecordTest where
 
 import Test.Tasty.HUnit
-import Helpers
+import TestHelpers
 import Syntax
 import Text.RawString.QQ (r)
 import Parser (parseType)

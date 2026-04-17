@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Helpers
 import Syntax
 
 type EvalCtx = Map String TypedTerm
@@ -48,6 +49,12 @@ eval (t, ctx) = case t of
             (TIdent "true" _, _) -> eval (th, ctx)
             (TIdent "false" _, _) -> eval (el, ctx)
             _ -> error "Runtime Error: 'if' condition did not evaluate to a boolean."
+    TIs val targetTy thenBranch elseBranch _ ->
+        if (getType vVal) == targetTy
+            then eval (thenBranch, ctx)
+            else eval (elseBranch, ctx)
+      where
+        (vVal, _) = eval (val, ctx)
 
 evalProgram :: TypedProgram -> TypedTerm
 evalProgram pgrm =
@@ -62,17 +69,19 @@ applyBuiltin name (TRecord fs _) =
     let val0 = Map.lookup "0" fs
         val1 = Map.lookup "1" fs
      in case (val0, val1) of
+            (Just v1, Just v2)
+                | name == "eq?" ->
+                    if v1 == v2 then TIdent "true" Bool else TIdent "false" Bool
             (Just (TLitInt a), Just (TLitInt b)) ->
                 case name of
                     "+" -> TLitInt (a + b)
                     "-" -> TLitInt (a - b)
                     "*" -> TLitInt (a * b)
                     "/" -> if b == 0 then error "Division by zero" else TLitInt (a `div` b)
-                    ">" -> if a > b then TIdent "true" (TypeVar "Bool") else TIdent "false" (TypeVar "Bool")
-                    "<" -> if a < b then TIdent "true" (TypeVar "Bool") else TIdent "false" (TypeVar "Bool")
-                    "eq?" -> if a == b then TIdent "true" (TypeVar "Bool") else TIdent "false" (TypeVar "Bool")
+                    ">" -> if a > b then TIdent "true" Bool else TIdent "false" Bool
+                    "<" -> if a < b then TIdent "true" Bool else TIdent "false" Bool
                     _ -> error $ "Builtin " ++ name ++ " not implemented for these arguments"
             _ -> error $ "Builtin " ++ name ++ " expected integer record [0=i, 1=j]"
-applyBuiltin "not" (TIdent "true" _) = TIdent "false" (TypeVar "Bool")
-applyBuiltin "not" (TIdent "false" _) = TIdent "true" (TypeVar "Bool")
+applyBuiltin "not" (TIdent "true" _) = TIdent "false" Bool
+applyBuiltin "not" (TIdent "false" _) = TIdent "true" Bool
 applyBuiltin name _ = error $ "Invalid arguments for builtin " ++ name

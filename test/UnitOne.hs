@@ -2,7 +2,7 @@
 module UnitOne where
 
 import Test.Tasty.HUnit
-import Helpers
+import TestHelpers
 import Syntax
 import Eval (evalProgram)
 import Text.RawString.QQ (r)

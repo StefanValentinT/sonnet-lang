@@ -26,6 +26,7 @@ dependencies:
 - parser-combinators
 - pretty-simple
 - containers
+- mtl
 
 ghc-options:
 - -Wall

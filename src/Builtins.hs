@@ -28,4 +28,4 @@ makeBuiltins = do
             ]
 
 isBuiltin :: String -> Bool
-isBuiltin name = name `elem` ["+", "-", "*", "/", "eq?", ">", "<", "not"]
+isBuiltin name = name `elem` ["+", "-", "*", "/", "eq?", ">", "<", "not", "true", "false"]
