@@ -1,5 +1,6 @@
-module Helpers (getType, canonicalize) where
+module Helpers (getType, canonicalize, prettyPrintType, printTypedProgram) where
 
+import Data.List (intercalate)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Syntax
@@ -25,3 +26,26 @@ canonicalize (Union a b) =
 canonicalize (FunType a b) = FunType (canonicalize a) (canonicalize b)
 canonicalize (RecordType m) = RecordType (Map.map canonicalize m)
 canonicalize t = t
+
+prettyPrintType :: Type -> String
+prettyPrintType Top = "Top"
+prettyPrintType Bot = "Bot"
+prettyPrintType Bool = "Bool"
+prettyPrintType I32 = "Int"
+prettyPrintType (Union t1 t2) =
+    "(" ++ prettyPrintType t1 ++ " ∨ " ++ prettyPrintType t2 ++ ")"
+prettyPrintType (Inter t1 t2) =
+    "(" ++ prettyPrintType t1 ++ " ∧ " ++ prettyPrintType t2 ++ ")"
+prettyPrintType (Neg t) = "¬" ++ prettyPrintType t
+prettyPrintType (FunType t1 t2) =
+    "(" ++ prettyPrintType t1 ++ " → " ++ prettyPrintType t2 ++ ")"
+prettyPrintType (RecordType m) =
+    "{" ++ intercalate ", " [k ++ ": " ++ prettyPrintType v | (k, v) <- Map.toList m] ++ "}"
+prettyPrintType (RecType name t) = "μ" ++ name ++ "." ++ prettyPrintType t
+prettyPrintType (TypeVar s) = s
+
+printTypedProgram :: TypedProgram -> IO ()
+printTypedProgram prog = mapM_ printEntry (Set.toList prog)
+  where
+    printEntry (name, term) =
+        putStrLn $ name ++ " : " ++ prettyPrintType (getType term)

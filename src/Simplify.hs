@@ -41,48 +41,31 @@ eliminateDeadVars pols ty = case ty of
 
 compact :: Type -> Type
 compact ty = case ty of
-    Union (RecordType fs1) (RecordType fs2) ->
-        if Map.keysSet fs1 == Map.keysSet fs2
-            then RecordType $ Map.intersectionWith (\t1 t2 -> compact (Union t1 t2)) fs1 fs2
-            else Union (RecordType fs1) (RecordType fs2)
-    Inter (RecordType fs1) (RecordType fs2) ->
-        let merged =
-                Map.mergeWithKey
-                    (\_ t1 t2 -> Just $ compact (Inter t1 t2))
-                    (Map.map (`Inter` Top))
-                    (Map.map (Inter Top))
-                    fs1
-                    fs2
-         in RecordType merged
-    Union t1 t2 ->
-        let a = compact t1; b = compact t2
-         in if a == b
-                then a
-                else
-                    if a == Bot
-                        then b
-                        else
-                            if b == Bot
-                                then a
-                                else
-                                    if a == Top || b == Top
-                                        then Top
-                                        else case (a, b) of
-                                            (RecordType _, RecordType _) -> compact (Union a b)
-                                            _ -> Union a b
+    RecordType fs -> RecordType (Map.map compact fs)
+    FunType arg res -> FunType (compact arg) (compact res)
     Inter t1 t2 ->
         let a = compact t1; b = compact t2
-         in if a == b
-                then a
-                else
-                    if a == Top
-                        then b
-                        else
-                            if b == Top
-                                then a
-                                else if a == Bot || b == Bot then Bot else Inter a b
-    FunType arg res -> FunType (compact arg) (compact res)
-    RecordType fs -> RecordType (Map.map compact fs)
+         in case (a, b) of
+                _ | a == b -> a
+                (Top, _) -> b
+                (_, Top) -> a
+                (Bot, _) -> Bot
+                (_, Bot) -> Bot
+                (RecordType fs1, RecordType fs2) ->
+                    RecordType $ Map.unionWith (\v1 v2 -> compact (Inter v1 v2)) fs1 fs2
+                _ -> Inter a b
+    Union t1 t2 ->
+        let a = compact t1; b = compact t2
+         in case (a, b) of
+                _ | a == b -> a
+                (Top, _) -> Top
+                (_, Top) -> Top
+                (Bot, _) -> b
+                (_, Bot) -> a
+                (RecordType fs1, RecordType fs2)
+                    | Map.keysSet fs1 == Map.keysSet fs2 ->
+                        RecordType $ Map.intersectionWith (\v1 v2 -> compact (Union v1 v2)) fs1 fs2
+                _ -> Union a b
     RecType n t -> let t' = compact t in if n `occursIn` t' then RecType n t' else t'
     other -> other
 

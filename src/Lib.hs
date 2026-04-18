@@ -2,6 +2,7 @@ module Lib (compile) where
 
 import Control.Monad (forM_)
 import Eval
+import Helpers
 import Parser (parseProgram)
 import Specialise
 import Syntax
@@ -15,9 +16,10 @@ compile input = do
         Left err -> do
             putStrLn (errorBundlePretty err)
         Right program -> do
+            pPrint program
             typedProgram <- infer program
             pPrint typedProgram
-            pPrint $ evalProgram typedProgram
+            printTypedProgram typedProgram
 
 -- let loProg = specialise typedProgram
 

@@ -68,7 +68,7 @@ assignLabels = snd . foldl step (0 :: Int, [])
 
 identifier :: Parser String
 identifier = lexeme . try $ do
-    let forbidden = "()[]{}∧∨¬\\/~∈= \t\n\r"
+    let forbidden = ".()[]{}∧∨¬\\/~∈= \t\n\r"
     first <- satisfy (\c -> not (isDigit c) && c `notElem` forbidden)
     rest <- many (satisfy (`notElem` forbidden))
     let name = first : rest
@@ -136,7 +136,13 @@ parseTerm :: Parser Term
 parseTerm = sc *> atomP
 
 atomP :: Parser Term
-atomP =
+atomP = do
+    base <- baseTermP
+    rest <- many (symbol "." *> identifier)
+    return $ foldl Sel base rest
+
+baseTermP :: Parser Term
+baseTermP =
     parens sExprP
         <|> recordTermP
         <|> litInt
@@ -145,19 +151,11 @@ atomP =
 
 sExprP :: Parser Term
 sExprP =
-    parseBuiltinSExpr
-        <|> letP
+    letP
         <|> funP
         <|> ifP
         <|> isP
         <|> appP
-
-parseBuiltinSExpr :: Parser Term
-parseBuiltinSExpr = try $ do
-    void $ symbol "sel"
-    obj <- atomP
-    field <- (identifier <|> (show <$> lexeme L.decimal))
-    return (Sel obj field)
 
 letP :: Parser Term
 letP = do
