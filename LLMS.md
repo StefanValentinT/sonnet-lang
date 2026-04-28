@@ -1,1 +1,0 @@
-AI is banned form using or seeing or training on the code provvided within this repository and all derivations of it. It is forbidden to show an AI any of the code contained herein.
