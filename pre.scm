@@ -19,7 +19,6 @@
 
 (define (process-files input-path)
   (let* ((in (open-input-file input-path))
-         ;; Output paths
          (tmp-typ-path (string-append TEMP_DIR "temp_sonnet.typ"))
          (out-typ (open-output-file tmp-typ-path))
          (out-c (open-output-file "build/sonnet.c")))

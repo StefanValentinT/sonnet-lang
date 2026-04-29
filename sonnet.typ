@@ -1,20 +1,25 @@
 #show raw: set text(font: "Fira Code")
 #show raw.where(block: true): block.with(
-    //fill: luma(240), 
     inset: 2em, 
     width: 100%, 
     stroke: black)
 
 #set page(numbering: "I")
 
+#set heading(numbering: "1.")
+#show heading: set block(
+  above: 2em,
+  below: 1.5em,
+)
+
+#import "@preview/dashy-todo:0.1.3": todo
+
 #outline()
 #pagebreak()
 
-= The Sonnet Compiler - written in C
+= Boilerplate
 
-== Boilerplate
-
-=== Imports
+== Imports
 
 ```c
 #include <ctype.h>
@@ -24,16 +29,62 @@
 #include <string.h>
 ```
 
-=== Declarations
+== Type Definitions
 
+All types are defined here, to allow for mutual recursion between them.
+
+String is our own implementation of better strings than the C language.
 ```c
 typedef struct String String;
+```
 
+Tokens are the atomic units of syntax that our lexer outputs.
+```c
 typedef enum TokenType TokenType;
 typedef struct Token Token;
 typedef struct TokenStack TokenStack;
 ```
-== String 
+
+The parser then parses them into an AST.
+
+```c
+typedef struct Ast Ast;
+typedef enum TypeType TypeType;
+typedef struct Type Type;
+typedef enum NodeType NodeType;
+typedef enum BinOpType BinOpType;
+
+typedef struct HashMapEntry HashMapEntry;
+typedef struct HashMap HashMap;
+typedef struct Program Program;
+```
+
+This is for the parser.
+
+```c
+typedef struct Parser Parser;
+```
+
+== Function Declarations
+
+Next we declare all functions defined in the entire program before actually implementing them for the same reason. Function names typically follow the scheme of ```<type>_<action>_<modifier>``` and take as their first argument a value or a pointer of ```<type>```.
+
+Starting with the functions working on a String. These will be defined in @chapter_string.
+
+```c
+void string_init(String* s, const char* initial);
+String string_empty();
+const char* string_to_cstr(const String* s);
+String string_from_cstr(const char* initial);
+void string_append(String* s, const char* str);
+void string_push_char(String* s, char c);
+void string_free(String* s);
+String read_file(String filename);
+```
+
+= String <chapter_string>
+
+A string is a pointer to a section of memory holding all the characters it contains. The string also has a length and a capacity, meaning our strings are not null-terminated. Capacity is the total space available for the character data. Length is the actual length of the string, both can but do not need be equal. The capacity is increased, whenever an operation is performed on the string that leads to its lenght becoming larger than the capacity. Since changing the capacity means allocating or freeing memory, the String implementation tries to minimize the amount of changes to capacity.
 
 ```c
 struct String
@@ -42,7 +93,11 @@ struct String
     size_t length;
     size_t capacity;
     };
+```
 
+The members of String should not be set manually. Instead rely on the two constructor functions for initialising with a know sequence of characters or for creating an empty string. Of course, what is built must fall, therefore there is also a destructor.
+
+```c
 void string_init(String* s, const char* initial)
     {
     size_t len = strlen(initial);
@@ -51,6 +106,15 @@ void string_init(String* s, const char* initial)
     s->data = (char*)malloc(s->capacity);
     strcpy(s->data, initial);
     }
+
+String string_from_cstr(const char* initial)
+    {
+    String s;
+    string_init(&s, initial);
+    return s;
+    }
+
+const char* string_to_cstr(const String* s) { return s->data; }
 
 String string_empty()
     {
@@ -62,8 +126,17 @@ String string_empty()
     return s;
     }
 
-const char* string_get_data(const String* s) { return s->data; }
+void string_free(String* s)
+    {
+    free(s->data);
+    s->data = NULL;
+    s->length = 0;
+    s->capacity = 0;
+    }
+```
 
+Next we have some pretty obvious functions for working with strings.
+```c
 void string_append(String* s, const char* str)
     {
     size_t new_len = s->length + strlen(str);
@@ -90,19 +163,16 @@ void string_push_char(String* s, char c)
     s->length++;
     s->data[s->length] = '\0';
     }
+```
 
-void string_free(String* s)
-    {
-    free(s->data);
-    s->data = NULL;
-    s->length = 0;
-    s->capacity = 0;
-    }
+And finally input and output with strings. #todo[Add a function to write a string to file, maybe called write_to_file]
 
-String read_file(const char* filename)
+```c
+String read_file(String filename)
     {
     String s = string_empty();
-    FILE* f = fopen(filename, "r");
+    const char* cstr = string_to_cstr(&filename);
+    FILE* f = fopen(cstr, "r");
 
     if (f)
         {
@@ -117,14 +187,10 @@ String read_file(const char* filename)
     }
 ```
 
-== The Ast
+= The Ast
 
+The list of all possible kinds a type can be of.
 ```c
-typedef struct Ast Ast;
-typedef enum TypeType TypeType;
-typedef struct Type Type;
-typedef enum NodeType NodeType;
-
 enum TypeType
     {
     T_I8,
@@ -144,7 +210,12 @@ enum TypeType
     T_Enum,
     T_Pointer
     };
+```
+A type is a tag, which contains the information about its kind, and if the kind requires so the fiedl data, which is a union of all possible kinds of data, that can be associated with a type. Only one of these anonymous struct fields can be initlized for a concrete type. This design pattern, which is equivalent to an Algebraic Datatype (ADT) in languages like Haskell, OCaml or Rust, is used for all elements of the AST.
 
+Types themselves are pretty trivial in Sonnet, the type language is strictly second-class and inferior to the term-language. There are primitves for numbers, both signed and unsigned, of various common bit lenghts. There are also composite types for pointers, and structs, unions and enums.
+
+```c
 struct Type
     {
     TypeType tag;
@@ -175,11 +246,14 @@ struct Type
                 }* fields;
             size_t field_count;
             } enum_type;
-        };
-    };
 
-typedef enum
-{
+        } data;
+    };
+```
+
+```c
+enum BinOpType
+    {
     ADD,
     SUB,
     DIV,
@@ -190,8 +264,10 @@ typedef enum
     MoreThanEqual,
     Equal,
     NotEqual
-} BinOpType;
+    };
+```
 
+```c
 enum NodeType
     {
     Var,
@@ -212,7 +288,9 @@ enum NodeType
     I32Lit,
     StringLit
     };
+```
 
+```c
 struct Ast
     {
     NodeType type;
@@ -228,7 +306,6 @@ struct Ast
             } bin_op;
         struct
             {
-            String name;
             struct
                 {
                 String name;
@@ -318,7 +395,9 @@ struct Ast
             } string_lit;
         } data;
     };
+```
 
+```c
 Ast* new_node(Ast ast)
     {
     Ast* ptr = malloc(sizeof(Ast));
@@ -334,20 +413,20 @@ void type_free(Type* t)
 
     if (t->tag == T_Struct || t->tag == T_Union)
         {
-        for (size_t i = 0; i < t->struct_type.field_count; i++)
+        for (size_t i = 0; i < t->data.struct_type.field_count; i++)
             {
-            string_free(&t->struct_type.fields[i].name);
-            type_free(t->struct_type.fields[i].type);
+            string_free(&t->data.struct_type.fields[i].name);
+            type_free(t->data.struct_type.fields[i].type);
             }
-        free(t->struct_type.fields);
+        free(t->data.struct_type.fields);
         }
     else if (t->tag == T_Enum)
         {
-        for (size_t i = 0; i < t->enum_type.field_count; i++)
+        for (size_t i = 0; i < t->data.enum_type.field_count; i++)
             {
-            string_free(&t->enum_type.fields[i].name);
+            string_free(&t->data.enum_type.fields[i].name);
             }
-        free(t->enum_type.fields);
+        free(t->data.enum_type.fields);
         }
     free(t);
     }
@@ -369,7 +448,6 @@ void ast_free(Ast* node)
         break;
 
     case Fun:
-        string_free(&node->data.fun.name);
         for (size_t i = 0; i < node->data.fun.param_count; i++)
             {
             string_free(&node->data.fun.params[i].name);
@@ -467,8 +545,141 @@ void ast_free(Ast* node)
     free(node);
     }
 ```
+Since in a Sonnet program all term and type definitions come into being at the same time, unlike in C were you have to predeclare everything, we need to make a Program hold to different mpas, one linking names to types, for type definitions, and the other one mapping names to terms, for term definitions. Both are realised by HashMap. The HashMap stores values with the void\*-type, instead of having to different implementations for types and terms at the cost of less type safety - but you only life once!
 
-== Lexer
+```c
+struct HashMapEntry
+    {
+    String key;
+    void* value;
+    struct HashMapEntry* next;
+    };
+
+struct HashMap
+    {
+    HashMapEntry** buckets;
+    size_t capacity;
+    size_t count;
+    };
+```
+
+For computing the hash of a given name we use the djb2-hash-function.
+```c
+unsigned long hash_string(const String* s)
+    {
+    unsigned long hash = 5381;
+    for (size_t i = 0; i < s->length; i++)
+        {
+        hash = ((hash << 5) + hash) + s->data[i];
+        }
+    return hash;
+    }
+```
+As previously discussed, members of structs should in most cases assumed to be private. This is also the case for HashMap, therefore use these functions for working with one. Using these we can initialize a hash map with a given number of buckets, insert a key-value pair into the hash map, and retrieve the value associated with a given key.
+
+```c
+void hashmap_init(HashMap* map, size_t capacity)
+    {
+    map->capacity = capacity;
+    map->count = 0;
+    map->buckets = (HashMapEntry**)calloc(capacity, sizeof(HashMapEntry*));
+    }
+
+void hashmap_insert(HashMap* map, String key, void* value)
+    {
+    unsigned long hash = hash_string(&key) % map->capacity;
+
+    HashMapEntry* entry = malloc(sizeof(HashMapEntry));
+    entry->key = key;
+    entry->value = value;
+
+    entry->next = map->buckets[hash];
+    map->buckets[hash] = entry;
+    map->count++;
+    }
+
+void* hashmap_get(HashMap* map, String key)
+    {
+    unsigned long hash = hash_string(&key) % map->capacity;
+    HashMapEntry* entry = map->buckets[hash];
+
+    while (entry)
+        {
+        if (strcmp(entry->key.data, key.data) == 0)
+            return entry->value;
+        entry = entry->next;
+        }
+    return NULL;
+    }
+```
+
+Since a hash map can store all kinds of data, this data must be freed to, when the hash map is destroyed. Therefore a destructor for the values can be given to the hashmap_free-function.
+
+```c
+void hashmap_free(HashMap* map, void (*value_free_func)(void*))
+    {
+    if (!map || !map->buckets)
+        return;
+
+    for (size_t i = 0; i < map->capacity; i++)
+        {
+        HashMapEntry* entry = map->buckets[i];
+        while (entry)
+            {
+            HashMapEntry* next = entry->next;
+
+            string_free(&entry->key);
+
+            if (value_free_func)
+                {
+                value_free_func(entry->value);
+                }
+
+            free(entry);
+            entry = next;
+            }
+        }
+    free(map->buckets);
+    map->buckets = NULL;
+    }
+```
+
+A program is just two maps for type and term synonyms. Were possible functions are defined to better suit the more specialized needs of a program compared to the general hash map.
+
+```c
+struct Program
+    {
+    HashMap type_definitions;
+    HashMap term_definitions;
+    };
+
+Program program_init(size_t capacity)
+    {
+    Program p;
+    hashmap_init(&p.type_definitions, capacity);
+    hashmap_init(&p.term_definitions, capacity);
+    return p;
+    }
+
+void program_free(Program* p)
+    {
+    hashmap_free(&p->type_definitions, (void (*)(void*))type_free);
+    hashmap_free(&p->term_definitions, (void (*)(void*))ast_free);
+    }
+
+void program_add_type(Program* p, String name, Type* type)
+    {
+    hashmap_insert(&p->type_definitions, name, (void*)type);
+    }
+
+void program_add_term(Program* p, String name, Ast* term)
+    {
+    hashmap_insert(&p->term_definitions, name, (void*)term);
+    }
+```
+
+
+= Lexer
 
 ```c
 
@@ -575,7 +786,7 @@ void stack_push(TokenStack* s, Token t)
 Token stack_pop(TokenStack* s)
     {
     if (s->top == 0)
-        return (Token){TOK_EOF};
+        return tok_empty(TOK_EOF);
     return s->tokens[--s->top];
     }
 
@@ -840,7 +1051,14 @@ void lex(const String* input, TokenStack* stack)
     }
 ```
 
-== Pretty Printing
+= Parser
+
+```c
+
+```
+
+
+= Pretty Printing
 
 We define prtty printing functions for every object to easily inspect for debugging purposes:
 
@@ -960,7 +1178,115 @@ void print_token(Token t)
     }
 ```
 
-== Main
+Printing types.
+
+```c
+void print_type(Type* t, int depth)
+    {
+    if (!t)
+        return;
+    print_indent(depth);
+
+    switch (t->tag)
+        {
+    case T_I8:
+        printf("I8\n");
+        break;
+    case T_I16:
+        printf("I16\n");
+        break;
+    case T_I32:
+        printf("I32\n");
+        break;
+    case T_I64:
+        printf("I64\n");
+        break;
+    case T_U8:
+        printf("U8\n");
+        break;
+    case T_U16:
+        printf("U16\n");
+        break;
+    case T_U32:
+        printf("U32\n");
+        break;
+    case T_U64:
+        printf("U64\n");
+        break;
+    case T_F16:
+        printf("F16\n");
+        break;
+    case T_F32:
+        printf("F32\n");
+        break;
+    case T_F64:
+        printf("F64\n");
+        break;
+    case T_Pointer:
+        printf("Pointer\n");
+        break;
+    case T_Struct:
+        printf("Struct:\n");
+        for (size_t i = 0; i < t->data.struct_type.field_count; i++)
+            {
+            print_indent(depth + 1);
+            printf("Field: %s\n", t->data.struct_type.fields[i].name.data);
+            print_type(t->data.struct_type.fields[i].type, depth + 2);
+            }
+        break;
+    case T_Union:
+        printf("Union:\n");
+        for (size_t i = 0; i < t->data.union_type.field_count; i++)
+            {
+            print_indent(depth + 1);
+            printf("Field: %s\n", t->data.union_type.fields[i].name.data);
+            print_type(t->data.union_type.fields[i].type, depth + 2);
+            }
+        break;
+    case T_Enum:
+        printf("Enum:\n");
+        for (size_t i = 0; i < t->data.enum_type.field_count; i++)
+            {
+            print_indent(depth + 1);
+            printf("Field: %s\n", t->data.enum_type.fields[i].name.data);
+            }
+        break;
+        }
+    }
+```
+
+Printing the ast.
+
+```c
+const char* binop_to_str(BinOpType op)
+    {
+    switch (op)
+        {
+    case ADD:
+        return "+";
+    case SUB:
+        return "-";
+    case DIV:
+        return "/";
+    case MUL:
+        return "*";
+    case LessThan:
+        return "<";
+    case LessThanEqual:
+        return "<=";
+    case MoreThan:
+        return ">";
+    case MoreThanEqual:
+        return ">=";
+    case Equal:
+        return "==";
+    case NotEqual:
+        return "!=";
+        }
+    }
+```
+
+= Main
 
 ```c
 int main(int argc, char** argv)
@@ -970,8 +1296,8 @@ int main(int argc, char** argv)
         printf("Usage: %s <filename>\n", argv[0]);
         return 1;
         }
-
-    String source_code = read_file(argv[1]);
+    String filename = string_from_cstr(argv[1]);
+    String source_code = read_file(filename);
 
     if (source_code.length == 0)
         {

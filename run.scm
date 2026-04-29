@@ -15,7 +15,7 @@
 (define (build)
   (run-command "mkdir -p build")
   (run-command "gsi pre.scm")
-  (run-command "gcc -o build/sonnet build/sonnet.c"))
+  (run-command "gcc -o build/sonnet build/sonnet.c -Werror -Wall -Wextra -Wswitch -Wshadow -Wfloat-equal -Wpointer-arith -Wshadow -Wcast-align -Wunreachable-code"))
 
 (define (run args)
   (let ((cmd (string-append "./build/sonnet " (string-join args " "))))
