@@ -222,6 +222,10 @@ struct Type
         union {
         struct
             {
+                Type* ponting_to;
+            } pointer_type
+        struct
+            {
             struct
                 {
                 String name;
@@ -1223,7 +1227,8 @@ void print_type(Type* t, int depth)
         printf("F64\n");
         break;
     case T_Pointer:
-        printf("Pointer\n");
+        printf("Pointer to ");
+        printf(t->data.pointer_type.pointing_to, "\n");
         break;
     case T_Struct:
         printf("Struct:\n");
