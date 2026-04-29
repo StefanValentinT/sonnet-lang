@@ -222,8 +222,8 @@ struct Type
         union {
         struct
             {
-                Type* ponting_to;
-            } pointer_type
+            Type* pointing_to;
+            } pointer_type;
         struct
             {
             struct
@@ -1058,7 +1058,7 @@ void lex(const String* input, TokenStack* stack)
 = Parser
 
 ```c
-
+void parse(TokenStack* stack, Program* p) { printf("Parser stub!"); }
 ```
 
 
@@ -1227,8 +1227,8 @@ void print_type(Type* t, int depth)
         printf("F64\n");
         break;
     case T_Pointer:
-        printf("Pointer to ");
-        printf(t->data.pointer_type.pointing_to, "\n");
+        printf("*");
+        print_type(t->data.pointer_type.pointing_to, depth);
         break;
     case T_Struct:
         printf("Struct:\n");
@@ -1320,6 +1320,9 @@ int main(int argc, char** argv)
     print_token(stack_pop(&stack));
     print_token(stack_pop(&stack));
     print_token(stack_pop(&stack));
+
+    Program p = program_init(1024);
+    parse(&stack, &p);
 
     stack_free(&stack);
 

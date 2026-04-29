@@ -134,6 +134,10 @@ struct Type
         union {
         struct
             {
+            Type* pointing_to;
+            } pointer_type;
+        struct
+            {
             struct
                 {
                 String name;
@@ -921,7 +925,7 @@ void lex(const String* input, TokenStack* stack)
     eof_tok.type = TOK_EOF;
     stack_push(stack, eof_tok);
     }
-
+void parse(TokenStack* stack, Program* p) { printf("Parser stub!"); }
 void print_indent(int depth)
     {
     for (int i = 0; i < depth; i++)
@@ -1072,7 +1076,8 @@ void print_type(Type* t, int depth)
         printf("F64\n");
         break;
     case T_Pointer:
-        printf("Pointer\n");
+        printf("*");
+        print_type(t->data.pointer_type.pointing_to, depth);
         break;
     case T_Struct:
         printf("Struct:\n");
@@ -1154,6 +1159,9 @@ int main(int argc, char** argv)
     print_token(stack_pop(&stack));
     print_token(stack_pop(&stack));
     print_token(stack_pop(&stack));
+
+    Program p = program_init(1024);
+    parse(&stack, &p);
 
     stack_free(&stack);
 
