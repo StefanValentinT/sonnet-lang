@@ -51,6 +51,8 @@ The parser then parses them into an AST.
 typedef struct Ast Ast;
 typedef enum TypeType TypeType;
 typedef struct Type Type;
+typedef struct TermField TermField;
+typedef struct TypeField TypeField;
 typedef enum NodeType NodeType;
 typedef enum BinOpType BinOpType;
 
@@ -80,6 +82,12 @@ void string_append(String* s, const char* str);
 void string_push_char(String* s, char c);
 void string_free(String* s);
 String read_file(String filename);
+```
+
+The pretty printer.
+
+```c
+void print_token(Token t);
 ```
 
 = String <chapter_string>
@@ -216,6 +224,12 @@ A type is a tag, which contains the information about its kind, and if the kind 
 Types themselves are pretty trivial in Sonnet, the type language is strictly second-class and inferior to the term-language. There are primitves for numbers, both signed and unsigned, of various common bit lenghts. There are also composite types for pointers, and structs, unions and enums.
 
 ```c
+struct TypeField
+    {
+
+    String name;
+    Type* type;
+    };
 struct Type
     {
     TypeType tag;
@@ -226,33 +240,39 @@ struct Type
             } pointer_type;
         struct
             {
-            struct
-                {
-                String name;
-                Type* type;
-                }* fields;
+            struct TypeField* fields;
             size_t field_count;
             } struct_type;
         struct
             {
-            struct
-                {
-                String name;
-                Type* type;
-                }* fields;
+            struct TypeField* fields;
             size_t field_count;
             } union_type;
         struct
             {
-            struct
-                {
-                String name;
-                }* fields;
+            String* name;
             size_t field_count;
             } enum_type;
 
         } data;
     };
+
+Type* new_type(Type type)
+    {
+    Type* ptr = malloc(sizeof(Type));
+    if (ptr)
+        *ptr = type;
+    return ptr;
+    }
+
+Type* mk_type_prim(TypeType tag) { return new_type((Type){.tag = tag}); }
+
+Type* mk_type_pointer(Type* pointing_to)
+    {
+    Type* t = new_type((Type){.tag = T_Pointer});
+    t->data.pointer_type.pointing_to = pointing_to;
+    return t;
+    }
 ```
 
 ```c
@@ -295,6 +315,12 @@ enum NodeType
 ```
 
 ```c
+struct TermField
+    {
+    String name;
+    Ast* val;
+    };
+
 struct Ast
     {
     NodeType type;
@@ -310,11 +336,7 @@ struct Ast
             } bin_op;
         struct
             {
-            struct
-                {
-                String name;
-                Type* type;
-                }* params;
+            TypeField* params;
             size_t param_count;
             Type* return_type;
             Ast* body;
@@ -322,33 +344,22 @@ struct Ast
         struct
             {
             Ast* callee;
-            Ast** args;
+            TermField* args;
             size_t arg_count;
             } app;
         struct
             {
-            struct
-                {
-                String name;
-                Ast* val;
-                }* fields;
+            TermField* fields;
             size_t field_count;
             } struct_val;
         struct
             {
-            struct
-                {
-                String name;
-                Ast* val;
-                }* fields;
+            TermField* fields;
             size_t field_count;
             } union_val;
         struct
             {
-            struct
-                {
-                String name;
-                }* fields;
+            String* name;
             size_t field_count;
             } enum_val;
         struct
@@ -409,13 +420,161 @@ Ast* new_node(Ast ast)
         *ptr = ast;
     return ptr;
     }
+```
 
+There are helpr functions to make constructing an AST easier. These all start with $"mk_"$ followed by the name from the field of the anonymous union inside Ast.
+
+```c
+Ast* mk_var(String name)
+    {
+    Ast* n = new_node((Ast){.type = Var});
+    n->data.var.name = name;
+    return n;
+    }
+
+Ast* mk_varc(const char* name)
+    {
+    Ast* n = new_node((Ast){.type = Var});
+    n->data.var.name = string_from_cstr(name);
+    return n;
+    }
+
+Ast* mk_bin_op(BinOpType op, Ast* left, Ast* right)
+    {
+    Ast* n = new_node((Ast){.type = BinOp});
+    n->data.bin_op.op = op;
+    n->data.bin_op.left = left;
+    n->data.bin_op.right = right;
+    return n;
+    }
+
+Ast* mk_fun(TypeField* params, size_t param_count, Type* return_type, Ast* body)
+    {
+    Ast* n = new_node((Ast){.type = Fun});
+    n->data.fun.params = params;
+    n->data.fun.param_count = param_count;
+    n->data.fun.return_type = return_type;
+    n->data.fun.body = body;
+    return n;
+    }
+
+Ast* mk_app(Ast* callee, TermField* args, size_t arg_count)
+    {
+    Ast* n = new_node((Ast){.type = App});
+    n->data.app.callee = callee;
+    n->data.app.args = args;
+    n->data.app.arg_count = arg_count;
+    return n;
+    }
+
+Ast* mk_struct_val(TermField* fields, size_t field_count)
+    {
+    Ast* n = new_node((Ast){.type = Struct});
+    n->data.struct_val.fields = fields;
+    n->data.struct_val.field_count = field_count;
+    return n;
+    }
+
+Ast* mk_union_val(TermField* fields, size_t field_count)
+    {
+    Ast* n = new_node((Ast){.type = Union});
+    n->data.union_val.fields = fields;
+    n->data.union_val.field_count = field_count;
+    return n;
+    }
+
+Ast* mk_enum_val(String* name, size_t field_count)
+    {
+    Ast* n = new_node((Ast){.type = Enum});
+    n->data.enum_val.name = name;
+    n->data.enum_val.field_count = field_count;
+    return n;
+    }
+
+Ast* mk_compound(Ast** exprs, size_t expr_count)
+    {
+    Ast* n = new_node((Ast){.type = Compound});
+    n->data.compound.exprs = exprs;
+    n->data.compound.expr_count = expr_count;
+    return n;
+    }
+
+Ast* mk_var_decl(String name, Type* annot, Ast* init_expr)
+    {
+    Ast* n = new_node((Ast){.type = VarDecl});
+    n->data.var_decl.name = name;
+    n->data.var_decl.annot = annot;
+    n->data.var_decl.init_expr = init_expr;
+    return n;
+    }
+
+Ast* mk_var_set(String name, Ast* expr)
+    {
+    Ast* n = new_node((Ast){.type = VarSet});
+    n->data.var_set.name = name;
+    n->data.var_set.expr = expr;
+    return n;
+    }
+
+Ast* mk_loop(Ast* expr)
+    {
+    Ast* n = new_node((Ast){.type = Loop});
+    n->data.loop.expr = expr;
+    return n;
+    }
+
+Ast* mk_ref(Ast* expr)
+    {
+    Ast* n = new_node((Ast){.type = Ref});
+    n->data.ref.expr = expr;
+    return n;
+    }
+
+Ast* mk_deref(Ast* expr)
+    {
+    Ast* n = new_node((Ast){.type = Deref});
+    n->data.deref.expr = expr;
+    return n;
+    }
+
+Ast* mk_set_ptr(Ast* target, Ast* value)
+    {
+    Ast* n = new_node((Ast){.type = SetPtr});
+    n->data.set_ptr.target = target;
+    n->data.set_ptr.value = value;
+    return n;
+    }
+
+Ast* mk_access_ptr(Ast* target, String member)
+    {
+    Ast* n = new_node((Ast){.type = AccessPtr});
+    n->data.access_ptr.target = target;
+    n->data.access_ptr.member = member;
+    return n;
+    }
+
+Ast* mk_i32_lit(int32_t lit)
+    {
+    Ast* n = new_node((Ast){.type = I32Lit});
+    n->data.i32_lit.value = lit;
+    return n;
+    }
+
+Ast* mk_string_lit(String lit)
+    {
+    Ast* n = new_node((Ast){.type = I32Lit});
+    n->data.string_lit.value = lit;
+    return n;
+    }
+```
+
+```c
 void type_free(Type* t)
     {
     if (!t)
         return;
 
-    if (t->tag == T_Struct || t->tag == T_Union)
+    if (t->tag == T_Struct)
         {
         for (size_t i = 0; i < t->data.struct_type.field_count; i++)
             {
@@ -424,13 +583,22 @@ void type_free(Type* t)
             }
         free(t->data.struct_type.fields);
         }
+    else if (t->tag == T_Union)
+        {
+        for (size_t i = 0; i < t->data.union_type.field_count; i++)
+            {
+            string_free(&t->data.union_type.fields[i].name);
+            type_free(t->data.union_type.fields[i].type);
+            }
+        free(t->data.union_type.fields);
+        }
     else if (t->tag == T_Enum)
         {
         for (size_t i = 0; i < t->data.enum_type.field_count; i++)
             {
-            string_free(&t->data.enum_type.fields[i].name);
+            string_free(&t->data.enum_type.name[i]);
             }
-        free(t->data.enum_type.fields);
+        free(t->data.enum_type.name);
         }
     free(t);
     }
@@ -466,7 +634,8 @@ void ast_free(Ast* node)
         ast_free(node->data.app.callee);
         for (size_t i = 0; i < node->data.app.arg_count; i++)
             {
-            ast_free(node->data.app.args[i]);
+            string_free(&node->data.app.args[i].name);
+            ast_free(node->data.app.args[i].val);
             }
         free(node->data.app.args);
         break;
@@ -492,9 +661,9 @@ void ast_free(Ast* node)
     case Enum:
         for (size_t i = 0; i < node->data.enum_val.field_count; i++)
             {
-            string_free(&node->data.enum_val.fields[i].name);
+            string_free(&node->data.enum_val.name[i]);
             }
-        free(node->data.enum_val.fields);
+        free(node->data.enum_val.name);
         break;
 
     case Compound:
@@ -729,7 +898,7 @@ struct Token
         union {
         String ident_or_lit;
         int32_t lit;
-        } dat;
+        } data;
     };
 
 Token tok_empty(TokenType t)
@@ -757,7 +926,7 @@ void stack_free(TokenStack* s)
 
         if (t->type == TOK_IDENT || t->type == TOK_STRING)
             {
-            string_free(&t->dat.ident_or_lit);
+            string_free(&t->data.ident_or_lit);
             }
         }
 
@@ -883,7 +1052,7 @@ void lex(const String* input, TokenStack* stack)
 
             if (type == TOK_IDENT)
                 {
-                t.dat.ident_or_lit = ident;
+                t.data.ident_or_lit = ident;
                 }
             else
                 {
@@ -903,7 +1072,7 @@ void lex(const String* input, TokenStack* stack)
                 i++;
                 }
             Token t = tok_empty(TOK_INT);
-            t.dat.lit = val;
+            t.data.lit = val;
             stack_push(stack, t);
             continue;
             }
@@ -925,7 +1094,7 @@ void lex(const String* input, TokenStack* stack)
                 }
 
             Token t = tok_empty(TOK_STRING);
-            t.dat.ident_or_lit = str_val;
+            t.data.ident_or_lit = str_val;
             stack_push(stack, t);
             continue;
             }
@@ -1058,7 +1227,42 @@ void lex(const String* input, TokenStack* stack)
 = Parser
 
 ```c
-void parse(TokenStack* stack, Program* p) { printf("Parser stub!"); }
+void expect_peek(TokenStack* stack, TokenType expected)
+    {
+    TokenType actual = stack_peek(stack).type;
+    if (actual != expected)
+        {
+        fprintf(stderr, "Expected token type %d, but got %d\n", expected,
+                actual);
+        exit(EXIT_FAILURE);
+        }
+    }
+
+void expect_consume(TokenStack* stack, TokenType expected)
+    {
+    TokenType actual = stack_pop(stack).type;
+    if (actual != expected)
+        {
+        fprintf(stderr, "Expected token type %d, but got %d\n", expected,
+                actual);
+        exit(EXIT_FAILURE);
+        }
+    }
+
+void parse(TokenStack* stack, Program* p)
+    {
+    expect_peek(stack, TOK_IDENT);
+    String fun_name = stack_pop(stack).data.ident_or_lit;
+    expect_consume(stack, TOK_ASSIGN);
+
+    TypeField* params = malloc(sizeof(TypeField));
+    params[0].name = string_from_cstr("x");
+    params[0].type = mk_type_prim(T_I32);
+
+    program_add_term(
+        p, fun_name,
+        mk_fun(params, 1, mk_type_prim(T_I32), mk_var(string_from_cstr("x"))));
+    }
 ```
 
 
@@ -1085,13 +1289,13 @@ void print_token(Token t)
         printf("EOF");
         break;
     case TOK_IDENT:
-        printf("IDENT(\"%s\")", t.dat.ident_or_lit.data);
+        printf("IDENT(\"%s\")", t.data.ident_or_lit.data);
         break;
     case TOK_INT:
-        printf("INT(%d)", t.dat.lit);
+        printf("INT(%d)", t.data.lit);
         break;
     case TOK_STRING:
-        printf("STRING(\"%s\")", t.dat.ident_or_lit.data);
+        printf("STRING(\"%s\")", t.data.ident_or_lit.data);
         break;
     case TOK_ASSIGN:
         printf("=");
@@ -1253,7 +1457,7 @@ void print_type(Type* t, int depth)
         for (size_t i = 0; i < t->data.enum_type.field_count; i++)
             {
             print_indent(depth + 1);
-            printf("Field: %s\n", t->data.enum_type.fields[i].name.data);
+            printf("Field: %s\n", t->data.enum_type.name[i].data);
             }
         break;
         }
@@ -1317,10 +1521,6 @@ int main(int argc, char** argv)
 
     stack_reverse(&stack);
 
-    print_token(stack_pop(&stack));
-    print_token(stack_pop(&stack));
-    print_token(stack_pop(&stack));
-
     Program p = program_init(1024);
     parse(&stack, &p);
 
@@ -1329,3 +1529,4 @@ int main(int argc, char** argv)
     return 0;
     }
 ```
+
