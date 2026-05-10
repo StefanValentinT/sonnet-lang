@@ -1,0 +1,4 @@
+[fib.gk]
+file = "fib.gko"
+expect = "55"
+skip = false

@@ -1249,19 +1249,50 @@ void expect_consume(TokenStack* stack, TokenType expected)
         }
     }
 
+Type* parse_type(TokenStack* stack)
+    {
+    Token t = stack_pop(stack);
+    if (t.type == TOK_IDENT)
+        {
+        if (strcmp(t.data.ident_or_lit.data, "i32") == 0)
+            {
+            string_free(&t.data.ident_or_lit);
+            return mk_type_prim(T_I32);
+            }
+        }
+    fprintf(stderr, "Error: Unknown type\n");
+    exit(EXIT_FAILURE);
+    }
+
 void parse(TokenStack* stack, Program* p)
     {
     expect_peek(stack, TOK_IDENT);
     String fun_name = stack_pop(stack).data.ident_or_lit;
+
     expect_consume(stack, TOK_ASSIGN);
 
-    TypeField* params = malloc(sizeof(TypeField));
-    params[0].name = string_from_cstr("x");
-    params[0].type = mk_type_prim(T_I32);
+    expect_consume(stack, TOK_KW_FUN);
+    
+    expect_consume(stack, TOK_LPAREN);
+    expect_peek(stack, TOK_IDENT);
+    String arg_name = stack_pop(stack).data.ident_or_lit;
+    Type* arg_type = parse_type(stack);
 
-    program_add_term(
-        p, fun_name,
-        mk_fun(params, 1, mk_type_prim(T_I32), mk_var(string_from_cstr("x"))));
+    expect_consume(stack, TOK_RPAREN);
+
+    Type* ret_type = parse_type(stack);
+
+    expect_consume(stack, TOK_RIGHT_ARROW);
+
+    expect_peek(stack, TOK_IDENT);
+    String body_var = stack_pop(stack).data.ident_or_lit;
+    Ast* body_expr = mk_var(body_var);
+
+    TypeField* params = malloc(sizeof(TypeField));
+    params[0].name = arg_name;
+    params[0].type = arg_type;
+
+    program_add_term(p, fun_name, mk_fun(params, 1, ret_type, body_expr));
     }
 ```
 

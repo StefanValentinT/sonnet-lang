@@ -1,0 +1,23 @@
+(fun fib ($n)
+
+	(init $a 0)
+	(init $b 1)
+	(init $one 1)
+
+	(loop $n
+		(add $tmp $a $b)
+		
+		(set $a $b)
+		(set $b $tmp)
+		(sub-im $n $n 1)
+	)
+	(ret $a)
+)
+
+(fun main ()
+	(init $input 10)
+	(call $res fib $input)
+	(call $void print_int $res)
+	(init $zero 0)
+	(ret $zero)
+)

@@ -1,0 +1,33 @@
+
+(fun fib ($n)
+    (init $a 0)
+    (init $b 1)
+    (init $one 1)
+
+    (loop $n
+        (add $tmp $a $b)
+
+        (set $a $b)
+        (set $b $tmp)
+
+        (sub-im $n $n 1)
+    )
+    
+    # Return the result in $a
+    (ret $a)
+)
+
+(fun main ()
+    # Calculate Fib(10)
+    (init $input 10)
+    
+    # Function call
+    (call $res fib $input)
+    
+    # Output result via linked C function
+    (call $void print_int $res)
+    
+    # Exit code 0
+    (init $zero 0)
+    (ret $zero)
+)

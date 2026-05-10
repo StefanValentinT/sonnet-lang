@@ -1,12 +1,14 @@
 Copyright (c) 2026 StefanValentinT
 
-The Haiku Compiler consists of two main components:
+The Sonnet & Ginko Compiler thereafter mentioned as "compiler" is licensed under the following conditions:
 
-1. **Compiler Source Code** — this is the code that implements the Haiku Compiler itself. It is used to compile programs, but it is **not included in any binaries** produced by the compiler.  
+The compiler consists of two main components:
 
-2. **Libraries Shipped with the Compiler** — this includes the standard library and any additional libraries bundled with the Haiku Compiler. These libraries **are included in the compiled programs** and provide functionality to programs built using the compiler.
+1. **Compiler Source Code** — this is the code that implements the compiler itself. It is used to compile programs, but it is **not included in any binaries** produced by the compiler.  
 
-These components are licensed under different licenses to allow everyone to use the Haiku Compiler, whilst protecting its code.
+2. **Libraries Shipped with the Compiler** — this includes the standard library and any additional libraries bundled with the compiler. These libraries **are included in the compiled programs** and provide functionality to programs built using the compiler.
+
+These components are licensed under different licenses to allow everyone to use the compiler, whilst protecting its code.
 
 This code must not be used in any LLM application or as training data for such without prior written permission by the author.
 
