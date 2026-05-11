@@ -1,4 +1,9 @@
-[fib.gk]
+[fibonacci]
 file = "fib.gko"
 expect = "55"
+skip = false
+
+[spill-registers]
+file = "spill-reg.gko"
+expect = "2825"
 skip = false

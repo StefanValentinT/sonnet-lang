@@ -1,11 +1,12 @@
 (def build-dir "build")
 
 (def arch-configs
-	{:riscv64
-	 {:compile-cmd (fn [s-file obj-out] ["riscv64-unknown-elf-gcc" "-static" s-file "ginko-runtime.c" "-o" obj-out])
+	{
+	:riscv64
+	{:compile-cmd (fn [s-file obj-out] ["riscv64-unknown-elf-gcc" "-static" s-file "ginko-runtime.c" "-o" obj-out])
 		:run-cmd     (fn [obj-out] ["spike" "pk" obj-out])}
-	 :aarch64
-	 {:compile-cmd (fn [s-file obj-out] ["gcc" s-file "ginko-runtime.c" "-o" obj-out])
+	:aarch64
+	{:compile-cmd (fn [s-file obj-out] ["gcc" s-file "ginko-runtime.c" "-o" obj-out])
 		:run-cmd     (fn [obj-out] [(string "./" obj-out)])}})
 
 (defn run-and-capture [args &opt verbose]
@@ -26,6 +27,7 @@
 		bin-out (string build-dir "/bin_" base-name "_" target-str)]
 		
 		(let [asm (run-and-capture ["janet" "ginkoc.janet" filepath "--target" target-str] verbose)]
+			(when verbose (print "\nGenerated assembly:\n" asm))
 			(if (and asm (not (empty? asm)))
 				(do
 					(spit asm-path (string asm "\n"))
