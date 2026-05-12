@@ -182,7 +182,7 @@
 (defn arm-r [v]
 	(def sym (get-sym v))
 	(def idx (sym :reg-idx))
-	(if (> idx 30) (error-exit "Only 11 Callee-Registers, spill not yet implemented." "on aarch64"))
+	(if (> idx 11) (error-exit "Only 11 Callee-Registers, spill not yet implemented." "on aarch64"))
 	(string "x" (+ 19 idx)))
 
 (defn find-all-used-regs [n]
@@ -262,7 +262,9 @@
 			(set sym-table @{})
 			(set current-func-name (n :name))
 			(find-all-used-regs n)
-			(print "\n.global _" (n :name) "\n.p2align 2\n_" (n :name) ":")
+			(print ".global _" (n :name))
+			(print ".p2align 2")
+			(print "_" (n :name) ":")
 			(print "  stp x29, x30, [sp, #-112]!\n  mov x29, sp")
 			(for i 0 4 (print "  stp x" (+ 19 (* i 2)) ", x" (+ 20 (* i 2)) ", [sp, " (+ 16 (* i 16)) "]"))
 			(let [ps (n :params)] 

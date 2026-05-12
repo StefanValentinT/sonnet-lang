@@ -1,0 +1,27 @@
+(fun fib ($n)
+	(set-im $a 0)
+	(set-im $b 1)
+	(set-im $one 1)
+	(jump :loop)
+
+	:loop
+		(add $tmp $a $b)
+		(set $a $b)
+		(set $b $tmp)
+		(sub-im $n $n 1)
+		(jump-zero $n :exit)
+		(jump :loop)
+	
+	:exit
+		(ret $a)
+)
+
+(fun main ()
+	(set-im $a 0)
+	(set-im $in 10)
+	(call $out fib $in)
+
+	(call $void print_int $out)
+
+	(ret $a)
+)

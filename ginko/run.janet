@@ -14,10 +14,11 @@
 		(let [arch-data (get c/arch-configs arch)
 					compile-fn (get arch-data :compile-cmd)
 					run-cmd-gen (get arch-data :run-cmd)]
-			(if-let [bin (c/compile-to-bin filename arch compile-fn verbose)]
+			(if-let [bin (c/compile-to-bin filename arch compile-fn verbose false)]
 				(do 
 					(let [output (c/run-and-capture (run-cmd-gen bin) verbose)]
 						(print output))
-					(os/rm bin))
+					(os/rm bin)
+					)
 				(print "Compilation failed!")))
 		(print "")))

@@ -1,8 +1,8 @@
 
 (fun fib ($n)
-	(init $a 0)
-	(init $b 1)
-	(init $one 1)
+	(set-im $a 0)
+	(set-im $b 1)
+	(set-im $one 1)
 
 	(loop $n
 		(add $tmp $a $b)
@@ -17,12 +17,12 @@
 )
 
 (fun main ()
-	(init $input 10)
+	(set-im $input 10)
 
 	(call $res fib $input)
 	
 	(call $void print_int $res)
 	
-	(init $zero 0)
+	(set-im $zero 0)
 	(ret $zero)
 )

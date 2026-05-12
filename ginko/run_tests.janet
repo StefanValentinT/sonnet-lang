@@ -32,7 +32,7 @@
 	(def failures @[])
 
 	(eachp [test-name data] tests
-		(print "Testing " test-name ":")
+		(print "Testing '" test-name "':")
 		(def filename (get data :file))
 		
 		(if (or (nil? filename) (= (get data :skip) "true"))
@@ -45,7 +45,7 @@
 					(def arch-data (get c/arch-configs arch))
 					(prin "  [" arch "] ... ")
 					
-					(if-let [bin (c/compile-to-bin filepath arch (arch-data :compile-cmd) verbose)]
+					(if-let [bin (c/compile-to-bin filepath arch (arch-data :compile-cmd) verbose true)]
 						(let [output (c/run-and-capture ((arch-data :run-cmd) bin) verbose)]
 							(os/rm bin)
 							(if (= output expected)
