@@ -17,3 +17,8 @@ skip = false
 file = "hello.gko"
 expect = "Hello!"
 skip = false
+
+[array fib in memory]
+file = "fib-memory.gko"
+expect = "[0, 1, 2, 4, 8, 16, 32, 64, 128, 256]"
+skip = false

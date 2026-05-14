@@ -1,0 +1,41 @@
+(fun fib ($arr $n)
+	(set-im $v 0)
+	(store-i64 $v $arr 0)
+	(set-im $v 1)
+	(store-i64 $v $arr 8)
+
+	(set-im $i 2)
+	(set-im $off 16)
+	(jump :loop)
+
+	:loop
+
+	(sub-im $t $off 8)
+	(add $p $arr $t)
+	(load-i64 $n1 $p 0)
+
+	(add $p $arr $t)
+	(load-i64 $n2 $p 0)
+
+	(add $sum $n1 $n2)
+	(add $p $arr $off)
+	(store-i64 $sum $p 0)
+
+	(add-im $i $i 1)
+	(add-im $off $off 8)
+	(jump-not-eq $i $n :loop)
+	
+	(ret $arr)
+)
+
+(fun main ()
+	(alloc-im $my_arr 80)
+	(set-im $count 10)
+	
+	(call $unused fib $my_arr $count)
+
+	(call $unused print_array $my_arr $count)
+	
+	(set-im $zero 0)
+	(ret $zero)
+)
