@@ -1,27 +1,47 @@
-(fun fib ($n)
-	(set-im $a 0)
-	(set-im $b 1)
-	(set-im $one 1)
-	(jump :loop)
+(fun fib ($arr $n)
+    # F(0)=0, F(1)=1
+    (set-im $v 0)
+    (store-i64 $v $arr 0)
+    (set-im $v 1)
+    (store-i64 $v $arr 8)
 
-	:loop
-		(add $tmp $a $b)
-		(set $a $b)
-		(set $b $tmp)
-		(sub-im $n $n 1)
-		(jump-zero $n :exit)
-		(jump :loop)
-	
-	:exit
-		(ret $a)
+    (set-im $i 2)
+    (set-im $off 16)
+    (jump :loop)
+
+    :loop
+    # n1 = arr[i-1]
+    (sub-im $t $off 8)
+    (add $p $arr $t)
+    (load-i64 $n1 $p 0)
+
+    # n2 = arr[i-2]
+    (sub-im $t $off 16)
+    (add $p $arr $t)
+    (load-i64 $n2 $p 0)
+
+    # arr[i] = n1 + n2
+    (add $sum $n1 $n2)
+    (add $p $arr $off)
+    (store-i64 $sum $p 0)
+
+    (add-im $i $i 1)
+    (add-im $off $off 8)
+    (jump-not-eq $i $n :loop)
+    
+    (ret $arr)
 )
 
 (fun main ()
-	(set-im $a 0)
-	(set-im $in 10)
-	(call $out fib $in)
-
-	(call $void print_int $out)
-
-	(ret $a)
+    (alloc-im $my_arr 80)
+    (set-im $count 10)
+    
+    # Call our Fibonacci function
+    (call $unused fib $my_arr $count)
+    
+    # Print the result using the C runtime
+    (call $unused print_array $my_arr $count)
+    
+    (set-im $zero 0)
+    (ret $zero)
 )

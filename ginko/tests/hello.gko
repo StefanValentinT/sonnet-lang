@@ -1,0 +1,17 @@
+(fun main ()
+	(set-im $H 72)
+	(set-im $e 101)
+	(set-im $l 108)
+	(set-im $o 111)
+	(set-im $exclam 33)
+
+	(call $void putchar $H)
+	(call $void putchar $e)
+	(call $void putchar $l)
+	(call $void putchar $l)
+	(call $void putchar $o)
+	(call $void putchar $exclam)
+	
+	(set-im $a 0)
+	(ret $a)
+)

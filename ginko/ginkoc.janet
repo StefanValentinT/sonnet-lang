@@ -10,22 +10,48 @@
 	@{:type :program :functions funcs})
 (defn node-func [name params body] 
 	@{:type :function :name name :params params :body body})
+
 (defn node-set-im [dest val] 
 	@{:type :set-im :dest dest :val val})
 (defn node-set [dest src] 
 	@{:type :set :dest dest :src src})
+(defn node-call [dest func args] 
+	@{:type :call :dest dest :func func :args args})
+(defn node-ret [val] 
+	@{:type :ret :val val})
+
+(defn node-alloc [dest size-reg] 
+	@{:type :alloc :dest dest :size-reg size-reg})
+(defn node-alloc-im [dest size] 
+	@{:type :alloc-im :dest dest :size size})
+
+(defn node-store-i64 [src loc offset]
+	@{:type :store :size :i64 :src src :loc loc :offset offset})
+(defn node-store-i32 [src loc offset] # (store-i32 $val $location $offset)
+	@{:type :store :size :i32 :src src :loc loc :offset offset})
+(defn node-store-i16 [src loc offset]
+	@{:type :store :size :i16 :src src :loc loc :offset offset})
+(defn node-store-i8 [src loc offset]
+	@{:type :store :size :i8 :src src :loc loc :offset offset})
+
+(defn node-load-i64 [dest loc offset]
+	@{:type :load :size :i64 :dest dest :loc loc :offset offset})
+(defn node-load-i32 [dest loc offset]
+	@{:type :load :size :i32 :dest dest :loc loc :offset offset})
+(defn node-load-i16 [dest loc offset]
+	@{:type :load :size :i16 :dest dest :loc loc :offset offset})
+(defn node-load-i8 [dest loc offset]
+	@{:type :load :size :i8 :dest dest :loc loc :offset offset})
+
 (defn node-arith [op dest src1 src2] 
 	@{:type op :dest dest :src1 src1 :src2 src2})
 (defn node-arith-im [op dest src1 val] 
 	@{:type op :dest dest :src1 src1 :val val})
-(defn node-call [dest func args] 
-	@{:type :call :dest dest :func func :args args})
+
 (defn node-label [name] 
 	@{:type :label :name name})
 (defn node-jump [op src1 src2 label] 
 	@{:type :jump :op op :src1 src1 :src2 src2 :label label})
-(defn node-ret [val] 
-	@{:type :ret :val val})
 (defn node-loop [cond-reg body] 
 	@{:type :loop :cond cond-reg :body body})
 
@@ -89,10 +115,10 @@
 (defn expect [t &opt msg]
 	(let [tok current-token]
 		(if (and tok (= (tok :type) t))
-			(do 
-				(advance) 
-				tok)
-			(error-exit (string "Expected " t " but got " (if tok (tok :type) "EOF")) (or msg "")))))
+			(do (advance) tok)
+			(error-exit (string "Expected " t " but got " (if tok (tok :type) "EOF") 
+				" with value: " (if tok (tok :val) "nil")) 
+				(or msg "")))))
 
 (defn expect-val [t &opt msg] 
 	((expect t msg) :val))
@@ -108,6 +134,19 @@
 			"sub-im" (node-arith-im :sub-im (expect-val :reg) (expect-val :reg) (expect-val :num))
 			"xor-im" (node-arith-im :xor-im (expect-val :reg) (expect-val :reg) (expect-val :num))
 
+			"alloc"     (node-alloc (expect-val :reg) (expect-val :reg))
+			"alloc-im"  (node-alloc-im (expect-val :reg) (expect-val :num))
+			
+			"store-i64" (node-store-i64 (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"store-i32" (node-store-i32 (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"store-i16" (node-store-i16 (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"store-i8"  (node-store-i8  (expect-val :reg) (expect-val :reg) (expect-val :num))
+			
+			"load-i64"  (node-load-i64  (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"load-i32"  (node-load-i32  (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"load-i16"  (node-load-i16  (expect-val :reg) (expect-val :reg) (expect-val :num))
+			"load-i8"   (node-load-i8   (expect-val :reg) (expect-val :reg) (expect-val :num))
+			
 			"set-im" (node-set-im (expect-val :reg) (expect-val :num))
 			"set"    (node-set (expect-val :reg) (expect-val :reg))
 
@@ -165,10 +204,10 @@
 			(array/push funcs (parse-function)))
 		(node-program funcs)))
 
-(defn get-sym [name &opt create]
+(defn get-sym [name &opt create-if-not-present]
 	(if-let [s (get sym-table name)] 
 		s
-		(if create
+		(if create-if-not-present
 			(let [new-s @{:name name :reg-idx (length sym-table)}]
 				(put sym-table name new-s)
 				new-s))))
@@ -192,19 +231,31 @@
 			(each inst (n :body) (find-all-used-regs inst)))
 		:set-im (get-sym (n :dest) true)
 		:set    (do (get-sym (n :dest) true) (get-sym (n :src) true))
+
+		:alloc-im (get-sym (n :dest) true)
+		:alloc    (do (get-sym (n :dest) true) (get-sym (n :size-reg) true))
+		
+		:store (do (get-sym (n :src) true) (get-sym (n :loc) true))
+		:load  (do (get-sym (n :dest) true) (get-sym (n :loc) true))
+
 		:call   (do (get-sym (n :dest) true) (each a (n :args) (get-sym a true)))
+
 		:add    (do (get-sym (n :dest) true) (get-sym (n :src1) true) (get-sym (n :src2) true))
 		:sub    (do (get-sym (n :dest) true) (get-sym (n :src1) true) (get-sym (n :src2) true))
 		:xor    (do (get-sym (n :dest) true) (get-sym (n :src1) true) (get-sym (n :src2) true))
 		:add-im (do (get-sym (n :dest) true) (get-sym (n :src1) true))
 		:sub-im (do (get-sym (n :dest) true) (get-sym (n :src1) true))
 		:xor-im (do (get-sym (n :dest) true) (get-sym (n :src1) true))
+
 		:loop   (do (get-sym (n :cond) true) (each inst (n :body) (find-all-used-regs inst)))
 		:jump (do 
 			(if (n :src1) (get-sym (n :src1) true))
 			(if (n :src2) (get-sym (n :src2) true)))
 		:label nil
 		:ret    (get-sym (n :val) true)))
+
+(defn printi [& args]
+	(print "  " (string/join (map string args) " ")))
 
 (defn gen-rv [n]
 	(case (n :type)
@@ -214,51 +265,83 @@
 			(set current-func-name (n :name))
 			(find-all-used-regs n)
 			(print "\n.global " (n :name) "\n" (n :name) ":")
-			(print "  addi sp, sp, -112\n  sd ra, 104(sp)")
+			(printi "addi sp, sp, -112\n  sd ra, 104(sp)")
+			(printi "sd s0, 96(sp)")
+			(printi "mv s0, sp")
 			(for i 1 12 (print "  sd s" i ", " (* (- i 1) 8) "(sp)"))
 			(let [ps (n :params)] 
 				(for j 0 (length ps) (print "  mv " (rv-r (ps j)) ", a" j)))
 			(if (= (n :name) "main") (print "  li a0, 0"))
 			(each inst (n :body) (gen-rv inst)))
-		:set-im (print "  li " (rv-r (n :dest)) ", " (n :val))
-		:set (print "  mv " (rv-r (n :dest)) ", " (rv-r (n :src)))
-		:add (print "  add " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", " (rv-r (n :src2)))
-		:sub (print "  sub " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", " (rv-r (n :src2)))
-		:xor (print "  xor " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", " (rv-r (n :src2)))
-		:add-im (print "  addi " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", " (n :val))
-		:sub-im (print "  addi " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", -" (n :val))
-		:xor-im (print "  xori " (rv-r (n :dest)) ", " (rv-r (n :src1)) ", " (n :val))
+
+		:alloc-im (do
+			(def raw-size (scan-number (n :size)))
+			(def aligned (band (+ raw-size 15) (bnot 15)))
+			(printi "addi sp, sp, -" aligned)
+			(printi "mv " (rv-r (n :dest)) ", sp"))
+
+		:alloc (do
+			(def r (rv-r (n :size-reg)))
+			(def d (rv-r (n :dest)))
+			# Align the register value to 16 bytes
+			(printi "addi " r ", " r ", 15")
+			(printi "andi " r ", " r ", -16")
+			(printi "sub sp, sp, " r)
+			(printi "mv " d ", sp"))
+	
+		:store (do
+			(def op (case (n :size) :i8 "sb" :i16 "sh" :i32 "sw" :i64 "sd"))
+			(printi op " " (rv-r (n :src)) ", " (n :offset) "(" (rv-r (n :loc)) ")"))
+
+		:load (do
+			(def op (case (n :size) :i8 "lb" :i16 "lh" :i32 "lw" :i64 "ld"))
+			(printi op " " (rv-r (n :dest)) ", " (n :offset) "(" (rv-r (n :loc)) ")"))
+		
+		:set-im (printi "li" (rv-r (n :dest)) ", " (n :val))
+		:set (printi "mv" (rv-r (n :dest)) "," (rv-r (n :src)))
+
+		:add (printi "add" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (rv-r (n :src2)))
+		:sub (printi "sub" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (rv-r (n :src2)))
+		:xor (printi "xor" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (rv-r (n :src2)))
+		:add-im (printi "addi" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (n :val))
+		:sub-im (printi "addi" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (string "-" (n :val)))
+		:xor-im (printi "xori" (rv-r (n :dest)) "," (rv-r (n :src1)) "," (n :val))
+
 		:loop (let [id (++ global-timer)]
 			(print "L" id "s:")
-			(print "  mv a0, " (rv-r (n :cond)))
-			(print "  beqz a0, L" id "e")
+			(printi "mv a0," (rv-r (n :cond)))
+			(printi "beqz a0" "," (string "L" id "e"))
 			(each inst (n :body) (gen-rv inst))
 			(print "  j L" id "s\nL" id "e:"))
 		:call (do
 			(for i 0 (length (n :args))
-				(print "  mv a" i ", " (rv-r ((n :args) i))))
-			(print "  call " (n :func) "\n  mv " (rv-r (n :dest)) ", a0"))
+				(printi "mv" (string "a" i ",") (rv-r ((n :args) i))))
+			(printi "call" (n :func))
+			(printi "mv" (rv-r (n :dest)) ", a0"))
 		:label (do 
-			(print "  unimp # safety: no implicit fallthrough")
+			(printi "unimp")
 			(print current-func-name "_" (n :name) ":"))
 
 		:jump (let [s1 (if (n :src1) (rv-r (n :src1)))
 			s2 (if (n :src2) (rv-r (n :src2)))
 			lbl (string current-func-name "_" (n :label))]
 			(case (n :op)
-				:jmp (print "  j " lbl)
-				:jz  (print "  beqz " s1 ", " lbl)
-				:jeq (print "  beq " s1 ", " s2 ", " lbl)
-				:jne (print "  bne " s1 ", " s2 ", " lbl)))
-		:ret      (do 
-			(print "  mv a0, " (rv-r (n :val)))
-			(for i 1 12 (print "  ld s" i ", " (* (- i 1) 8) "(sp)"))
-			(print "  ld ra, 104(sp)\n  addi sp, sp, 112\n  ret"))))
+				:jmp (printi "j" lbl)
+				:jz  (printi "beqz" s1 "," lbl)
+				:jeq (printi "beq" s1 "," s2 ", " lbl)
+				:jne (printi "bne" s1 "," s2 ", " lbl)))
+		:ret (do 
+			(printi "mv a0," (rv-r (n :val)))
+			(printi "mv sp, s0") # Destroy all variables at end of scope (function)
+			(for i 1 12 
+					(printi "ld" (string "s" i ",") (string (* (- i 1) 8) "(sp)")))
+			(printi "ld s0, 96(sp)")
+			(printi "ld ra, 104(sp)\n  addi sp, sp, 112\n  ret"))))
 
 (defn gen-arm [n]
 	(case (n :type)
 		:program  (each f (n :functions) (gen-arm f))
-		:function (do 
+		:function (do
 			(set sym-table @{})
 			(set current-func-name (n :name))
 			(find-all-used-regs n)
@@ -266,19 +349,48 @@
 			(print ".p2align 2")
 			(print "_" (n :name) ":")
 			(print "  stp x29, x30, [sp, #-112]!\n  mov x29, sp")
-			(for i 0 4 (print "  stp x" (+ 19 (* i 2)) ", x" (+ 20 (* i 2)) ", [sp, " (+ 16 (* i 16)) "]"))
+			(for i 0 5 (print "  stp x" (+ 19 (* i 2)) ", x" (+ 20 (* i 2)) ", [sp, " (+ 16 (* i 16)) "]"))
 			(let [ps (n :params)] 
 				(for j 0 (length ps) (print "  mov " (arm-r (ps j)) ", x" j)))
-			(if (= (n :name) "main") (print "  mov w0, #0"))
+			(if (= (n :name) "main") (printi "mov w0, #0"))
 			(each inst (n :body) (gen-arm inst)))
+		
+		:alloc-im (do
+			(def raw-size (scan-number (n :size)))
+			(def aligned (band (+ raw-size 15) (bnot 15)))
+			(print "  sub sp, sp, #" aligned)
+			(print "  mov " (arm-r (n :dest)) ", sp"))
+
+		:alloc (do
+			(def r (arm-r (n :size-reg)))
+			(def d (arm-r (n :dest)))
+			(print "  add " r ", " r ", #15")
+			(print "  and " r ", " r ", #0xfffffffffffffff0")
+			(print "  sub sp, sp, " r)
+			(print "  mov " d ", sp"))
+
+		:store (do
+			(def reg (arm-r (n :src)))
+			(def val-reg (if (= (n :size) :i64) reg (string/replace "x" "w" reg)))
+			(def op (case (n :size) :i8 "strb" :i16 "strh" :i32 "str" :i64 "str"))
+			(print "  " op " " val-reg ", [" (arm-r (n :loc)) ", #" (n :offset) "]"))
+
+		:load (do
+			(def reg (arm-r (n :dest)))
+			(def val-reg (if (= (n :size) :i64) reg (string/replace "x" "w" reg)))
+			(def op (case (n :size) :i8 "ldrsb" :i16 "ldrsh" :i32 "ldr" :i64 "ldr"))
+			(print "  " op " " val-reg ", [" (arm-r (n :loc)) ", #" (n :offset) "]"))
+		
 		:set-im   (print "  mov " (arm-r (n :dest)) ", #" (n :val))
-		:set      (print "  mov " (arm-r (n :dest)) ", " (arm-r (n :src)))
-		:add      (print "  add " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", " (arm-r (n :src2)))
-		:sub      (print "  sub " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", " (arm-r (n :src2)))
-		:xor      (print "  eor " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", " (arm-r (n :src2)))
+		:set      (printi "mov" (arm-r (n :dest)) "," (arm-r (n :src)))
+
+		:add      (printi "add" (arm-r (n :dest)) "," (arm-r (n :src1)) "," (arm-r (n :src2)))
+		:sub      (printi "sub" (arm-r (n :dest)) ", " (arm-r (n :src1)) ", " (arm-r (n :src2)))
+		:xor      (printi "eor" (arm-r (n :dest)) "," (arm-r (n :src1)) "," (arm-r (n :src2)))
 		:add-im   (print "  add " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", #" (n :val))
 		:sub-im   (print "  sub " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", #" (n :val))
 		:xor-im   (print "  eor " (arm-r (n :dest)) ", " (arm-r (n :src1)) ", #" (n :val))
+
 		:loop     (let [id (++ global-timer)]
 			(print "L" id "s:")
 			(print "  mov x0, " (arm-r (n :cond)))
@@ -290,7 +402,7 @@
 				(print "  mov x" i ", " (arm-r ((n :args) i))))
 			(print "  bl _" (n :func) "\n  mov " (arm-r (n :dest)) ", x0"))
 		:label (do 
-			(print "  brk #0 // safety: no implicit fallthrough")
+			(printi "brk #0")
 			(print "_" current-func-name "_" (n :name) ":"))
 
 		:jump (let [s1 (if (n :src1) (arm-r (n :src1)))
@@ -305,7 +417,8 @@
 				 (print "  b.ne " lbl))))
 		:ret      (do 
 			(print "  mov x0, " (arm-r (n :val)))
-			(for i 0 4 (print "  ldp x" (+ 19 (* i 2)) ", x" (+ 20 (* i 2)) ", [sp, " (+ 16 (* i 16)) "]"))
+			(print "  mov sp, x29") # Same on aarch64
+			(for i 0 5 (print "  ldp x" (+ 19 (* i 2)) ", x" (+ 20 (* i 2)) ", [sp, " (+ 16 (* i 16)) "]"))
 			(print "  ldp x29, x30, [sp], #112\n  ret"))))
 
 (defn main [& args]

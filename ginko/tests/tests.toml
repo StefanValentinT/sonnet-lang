@@ -12,3 +12,8 @@ skip = false
 file = "spill-reg.gko"
 expect = "2825"
 skip = false
+
+[hello with putchar]
+file = "hello.gko"
+expect = "Hello!"
+skip = false
