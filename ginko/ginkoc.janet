@@ -254,6 +254,32 @@
 		:label nil
 		:ret    (get-sym (n :val) true)))
 
+(defn get-writes [n]
+	(case (n :type)
+		:set-im [(n :dest)]
+		:set [(n :dest)]
+		:alloc-im [(n :dest)]
+		:alloc [(n :dest)]
+		:load [(n :dest)]
+		:call [(n :dest)]
+		:add [(n :dest)] :sub [(n :dest)] :xor [(n :dest)]
+		:add-im [(n :dest)] :sub-im [(n :dest)] :xor-im [(n :dest)]
+		[]))
+
+(defn get-reads [n]
+	(case (n :type)
+		:set [(n :src)]
+		:alloc [(n :size-reg)]
+		:store [(n :src) (n :loc)]
+		:load [(n :loc)]
+		:call (n :args)
+		:add [(n :src1) (n :src2)] :sub [(n :src1) (n :src2)] :xor [(n :src1) (n :src2)]
+		:add-im [(n :src1)] :sub-im [(n :src1)] :xor-im [(n :src1)]
+		:ret [(n :val)]
+		:loop [(n :cond)]
+		:jump (filter identity [(n :src1) (n :src2)])
+		[]))
+
 (defn printi [& args]
 	(print "  " (string/join (map string args) " ")))
 
