@@ -33,6 +33,24 @@ public class Evaluator {
 			case AST.FloatNode n -> n;
 			case AST.StringNode n -> n;
 			case AST.SymbolNode n -> n;
+
+			case AST.TrueNode n -> n;
+			case AST.FalseNode n -> n;
+			case AST.NihilNode n -> n;
+			case AST.BoolTypeNode n -> n;
+			case AST.NihilTypeNode n -> n;
+			case AST.F16TypeNode n -> n;
+			case AST.F32TypeNode n -> n;
+			case AST.F64TypeNode n -> n;
+			case AST.I8TypeNode n -> n;
+			case AST.I16TypeNode n -> n;
+			case AST.I32TypeNode n -> n;
+			case AST.I64TypeNode n -> n;
+			case AST.U8TypeNode n -> n;
+			case AST.U16TypeNode n -> n;
+			case AST.U32TypeNode n -> n;
+			case AST.U64TypeNode n -> n;
+
 			case AST.IdentNode n -> resolveIdentifier(n, frame);
 			case AST.ListNode list -> evaluateList(list, frame);
 		};
@@ -82,8 +100,9 @@ public class Evaluator {
 
 		boolean isTrue =
 				switch (cond) {
-					case AST.SymbolNode s -> !s.symbol().equals("false");
-					default -> true;
+					case AST.TrueNode ignored -> true;
+					case AST.FalseNode ignored -> false;
+					default -> throw new EvaluationError();
 				};
 
 		return isTrue ? eval(elements.get(2), frame) : eval(elements.get(3), frame);
@@ -103,11 +122,7 @@ public class Evaluator {
 			res = eval(elements.get(i), frame);
 			switch (res) {
 				case AST.StringNode s -> System.out.print(s.value());
-				default -> System.out.print(res.toString());
-			}
-			;
-			if (i < elements.size() - 1) {
-				System.out.print(" ");
+				default -> System.out.print(":(" + res.toString() + ")");
 			}
 		}
 		System.out.println();
@@ -177,7 +192,6 @@ public class Evaluator {
 	}
 
 	private AST handleComparison(String op, List<AST> elements, Environment.Frame frame) {
-
 		if (elements.size() < 2) throw new EvaluationError();
 
 		boolean result =
@@ -188,7 +202,6 @@ public class Evaluator {
 
 						for (int i = 2; i < elements.size(); i++) {
 							AST right = eval(elements.get(i), frame);
-
 							boolean pairEqual = false;
 
 							if (left instanceof AST.IntNode l && right instanceof AST.IntNode r) {
@@ -199,6 +212,12 @@ public class Evaluator {
 								pairEqual = l.value().equals(r.value());
 							} else if (left instanceof AST.SymbolNode l && right instanceof AST.SymbolNode r) {
 								pairEqual = l.symbol().equals(r.symbol());
+							} else if (left instanceof AST.TrueNode && right instanceof AST.TrueNode) {
+								pairEqual = true;
+							} else if (left instanceof AST.FalseNode && right instanceof AST.FalseNode) {
+								pairEqual = true;
+							} else if (left instanceof AST.NihilNode && right instanceof AST.NihilNode) {
+								pairEqual = true;
 							}
 
 							if (!pairEqual) {
@@ -232,7 +251,7 @@ public class Evaluator {
 					default -> throw new EvaluationError();
 				};
 
-		return result ? new AST.SymbolNode("true") : new AST.SymbolNode("false");
+		return result ? new AST.TrueNode() : new AST.FalseNode();
 	}
 
 	private AST execute(AST funcValue, List<AST> args, Environment.Frame callerFrame) {

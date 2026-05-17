@@ -138,7 +138,7 @@ public class Tokenizer {
 								default -> new Token.IdentifierToken(lexeme);
 							};
 
-					tokens.add(new Token.IdentifierToken(lexeme));
+					tokens.add(token);
 					break;
 				}
 			}

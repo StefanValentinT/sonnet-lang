@@ -16,6 +16,24 @@ public class Parser {
 		Token tok = tokenStream.removeFirst();
 
 		return switch (tok) {
+			case Token.TrueToken() -> new AST.TrueNode();
+			case Token.FalseToken() -> new AST.FalseNode();
+			case Token.NihilToken() -> new AST.NihilNode();
+
+			case Token.BoolTypeToken() -> new AST.BoolTypeNode();
+			case Token.NihilTypeToken() -> new AST.NihilTypeNode();
+			case Token.F16TypeToken() -> new AST.F16TypeNode();
+			case Token.F32TypeToken() -> new AST.F32TypeNode();
+			case Token.F64TypeToken() -> new AST.F64TypeNode();
+			case Token.I8TypeToken() -> new AST.I8TypeNode();
+			case Token.I16TypeToken() -> new AST.I16TypeNode();
+			case Token.I32TypeToken() -> new AST.I32TypeNode();
+			case Token.I64TypeToken() -> new AST.I64TypeNode();
+			case Token.U8TypeToken() -> new AST.U8TypeNode();
+			case Token.U16TypeToken() -> new AST.U16TypeNode();
+			case Token.U32TypeToken() -> new AST.U32TypeNode();
+			case Token.U64TypeToken() -> new AST.U64TypeNode();
+
 			case Token.IntToken(var val) -> new AST.IntNode(val);
 			case Token.FloatToken(var val) -> new AST.FloatNode(val);
 			case Token.StringToken(var val) -> new AST.StringNode(val);

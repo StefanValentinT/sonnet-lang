@@ -57,7 +57,6 @@ public class App {
 	private static void run(String fileContent) {
 		List<Token> tokenStream = new Tokenizer().tokenize(fileContent);
 		AST ast = new Parser().parse(tokenStream);
-		System.out.println(ast);
 
 		Evaluator eval = new Evaluator();
 		eval.evaluate(ast);
