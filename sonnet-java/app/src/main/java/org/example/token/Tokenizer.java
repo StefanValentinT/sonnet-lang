@@ -112,6 +112,32 @@ public class Tokenizer {
 					String lexeme = input.substring(start, pos);
 					if (lexeme.isEmpty()) throw new TokenizerError();
 
+					Token token =
+							switch (lexeme) {
+								case "true" -> new Token.TrueToken();
+								case "false" -> new Token.FalseToken();
+								case "bool" -> new Token.BoolTypeToken();
+
+								case "nihil-type" -> new Token.NihilTypeToken();
+								case "nihil" -> new Token.NihilToken();
+
+								case "f16" -> new Token.F16TypeToken();
+								case "f32" -> new Token.F32TypeToken();
+								case "f64" -> new Token.F64TypeToken();
+
+								case "i8" -> new Token.I8TypeToken();
+								case "i16" -> new Token.I16TypeToken();
+								case "i32" -> new Token.I32TypeToken();
+								case "i64" -> new Token.I64TypeToken();
+
+								case "u8" -> new Token.U8TypeToken();
+								case "u16" -> new Token.U16TypeToken();
+								case "u32" -> new Token.U32TypeToken();
+								case "u64" -> new Token.U64TypeToken();
+
+								default -> new Token.IdentifierToken(lexeme);
+							};
+
 					tokens.add(new Token.IdentifierToken(lexeme));
 					break;
 				}

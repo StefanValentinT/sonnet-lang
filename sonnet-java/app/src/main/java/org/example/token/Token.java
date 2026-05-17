@@ -1,6 +1,38 @@
 package org.example.token;
 
 public sealed interface Token {
+	record TrueToken() implements Token {}
+
+	record FalseToken() implements Token {}
+
+	record BoolTypeToken() implements Token {}
+
+	record NihilTypeToken() implements Token {}
+
+	record NihilToken() implements Token {}
+
+	record F16TypeToken() implements Token {}
+
+	record F32TypeToken() implements Token {}
+
+	record F64TypeToken() implements Token {}
+
+	record I8TypeToken() implements Token {}
+
+	record I16TypeToken() implements Token {}
+
+	record I32TypeToken() implements Token {}
+
+	record I64TypeToken() implements Token {}
+
+	record U8TypeToken() implements Token {}
+
+	record U16TypeToken() implements Token {}
+
+	record U32TypeToken() implements Token {}
+
+	record U64TypeToken() implements Token {}
+
 	record IntToken(int value) implements Token {}
 
 	record FloatToken(double value) implements Token {}

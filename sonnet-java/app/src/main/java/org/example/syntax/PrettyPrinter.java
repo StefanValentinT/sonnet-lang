@@ -7,11 +7,11 @@ public class PrettyPrinter {
 
 	private String prettifyAST(AST node, int tabLevel) {
 		return switch (node) {
-			case AST.IntNode(int value) -> String.valueOf(value);
-			case AST.FloatNode(double value) -> String.valueOf(value);
-			case AST.StringNode(String value) -> "\"" + value + "\"";
-			case AST.SymbolNode(String symbol) -> ":" + symbol;
-			case AST.IdentNode(String name) -> name;
+			case AST.IntNode(int value) -> node.toString();
+			case AST.FloatNode(double value) -> node.toString();
+			case AST.StringNode(String value) -> node.toString();
+			case AST.SymbolNode(String symbol) -> node.toString();
+			case AST.IdentNode(String name) -> node.toString();
 			case AST.ListNode(var elements) -> {
 				if (elements.isEmpty()) {
 					yield "()";
