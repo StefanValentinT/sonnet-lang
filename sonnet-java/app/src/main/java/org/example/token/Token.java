@@ -5,7 +5,15 @@ public sealed interface Token {
 
 	record FalseToken() implements Token {}
 
-	record BoolTypeToken() implements Token {}
+	record TrueTypeToken() implements Token {}
+
+	record FalseTypeToken() implements Token {}
+
+	record StringTypeToken() implements Token {}
+
+	record AnySymbolTypeToken() implements Token {}
+
+	record SymbolTypeToken(String symbolVal) implements Token {}
 
 	record NihilTypeToken() implements Token {}
 

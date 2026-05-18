@@ -10,7 +10,11 @@ public class PrettyPrinter {
 			case AST.TrueNode() -> node.toString();
 			case AST.FalseNode() -> node.toString();
 			case AST.NihilNode() -> node.toString();
-			case AST.BoolTypeNode() -> node.toString();
+			case AST.FalseTypeNode() -> node.toString();
+			case AST.StringTypeNode() -> node.toString();
+			case AST.AnySymbolTypeNode() -> node.toString();
+			case AST.SymbolTypeNode(String val) -> node.toString();
+			case AST.TrueTypeNode() -> node.toString();
 			case AST.NihilTypeNode() -> node.toString();
 			case AST.F16TypeNode() -> node.toString();
 			case AST.F32TypeNode() -> node.toString();
@@ -23,6 +27,7 @@ public class PrettyPrinter {
 			case AST.U16TypeNode() -> node.toString();
 			case AST.U32TypeNode() -> node.toString();
 			case AST.U64TypeNode() -> node.toString();
+			case AST.TypeTypeNode() -> node.toString();
 
 			case AST.IntNode(int value) -> node.toString();
 			case AST.FloatNode(double value) -> node.toString();

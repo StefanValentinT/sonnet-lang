@@ -116,7 +116,10 @@ public class Tokenizer {
 							switch (lexeme) {
 								case "true" -> new Token.TrueToken();
 								case "false" -> new Token.FalseToken();
-								case "bool" -> new Token.BoolTypeToken();
+								case "true-type" -> new Token.TrueTypeToken();
+								case "false-type" -> new Token.TrueTypeToken();
+								case "string-type" -> new Token.StringTypeToken();
+								case "sym-type" -> new Token.AnySymbolTypeToken();
 
 								case "nihil-type" -> new Token.NihilTypeToken();
 								case "nihil" -> new Token.NihilToken();
@@ -135,7 +138,13 @@ public class Tokenizer {
 								case "u32" -> new Token.U32TypeToken();
 								case "u64" -> new Token.U64TypeToken();
 
-								default -> new Token.IdentifierToken(lexeme);
+								default -> {
+									if (lexeme.startsWith("sym-") && lexeme.endsWith("-type") && lexeme.length() > 9) {
+										String symbolVal = lexeme.substring(4, lexeme.length() - 5);
+										yield new Token.SymbolTypeToken(symbolVal);
+									}
+									yield new Token.IdentifierToken(lexeme);
+								}
 							};
 
 					tokens.add(token);

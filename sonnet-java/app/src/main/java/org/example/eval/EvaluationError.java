@@ -6,4 +6,8 @@ public class EvaluationError extends CompilerError {
 	public EvaluationError() {
 		super("Tree-Walk Interpreter", null);
 	}
+
+	public EvaluationError(String message) {
+		super("Tree-Walk Interpreter", message);
+	}
 }

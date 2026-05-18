@@ -20,8 +20,12 @@ public class Parser {
 			case Token.FalseToken() -> new AST.FalseNode();
 			case Token.NihilToken() -> new AST.NihilNode();
 
-			case Token.BoolTypeToken() -> new AST.BoolTypeNode();
+			case Token.FalseTypeToken() -> new AST.FalseTypeNode();
+			case Token.TrueTypeToken() -> new AST.TrueTypeNode();
 			case Token.NihilTypeToken() -> new AST.NihilTypeNode();
+			case Token.StringTypeToken() -> new AST.StringTypeNode();
+			case Token.AnySymbolTypeToken() -> new AST.AnySymbolTypeNode();
+			case Token.SymbolTypeToken(String val) -> new AST.SymbolTypeNode(val);
 			case Token.F16TypeToken() -> new AST.F16TypeNode();
 			case Token.F32TypeToken() -> new AST.F32TypeNode();
 			case Token.F64TypeToken() -> new AST.F64TypeNode();

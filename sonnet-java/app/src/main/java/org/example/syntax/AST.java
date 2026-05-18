@@ -10,6 +10,34 @@ public sealed interface AST {
 		}
 	}
 
+	record StringTypeNode() implements AST {
+		@Override
+		public String toString() {
+			return "string-type";
+		}
+	}
+
+	record AnySymbolTypeNode() implements AST {
+		@Override
+		public String toString() {
+			return "sym-type";
+		}
+	}
+
+	record SymbolTypeNode(String symbolVal) implements AST {
+		@Override
+		public String toString() {
+			return "sym-" + symbolVal + "-type";
+		}
+	}
+
+	record TypeTypeNode() implements AST {
+		@Override
+		public String toString() {
+			return "type";
+		}
+	}
+
 	record FalseNode() implements AST {
 		@Override
 		public String toString() {
@@ -17,10 +45,17 @@ public sealed interface AST {
 		}
 	}
 
-	record BoolTypeNode() implements AST {
+	record TrueTypeNode() implements AST {
 		@Override
 		public String toString() {
-			return "bool";
+			return "true-type";
+		}
+	}
+
+	record FalseTypeNode() implements AST {
+		@Override
+		public String toString() {
+			return "false-type";
 		}
 	}
 
@@ -34,7 +69,7 @@ public sealed interface AST {
 	record NihilTypeNode() implements AST {
 		@Override
 		public String toString() {
-			return "nihil_type";
+			return "nihil-type";
 		}
 	}
 

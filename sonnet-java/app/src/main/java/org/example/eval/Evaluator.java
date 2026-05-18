@@ -37,7 +37,12 @@ public class Evaluator {
 			case AST.TrueNode n -> n;
 			case AST.FalseNode n -> n;
 			case AST.NihilNode n -> n;
-			case AST.BoolTypeNode n -> n;
+			case AST.FalseTypeNode n -> n;
+			case AST.TrueTypeNode n -> n;
+			case AST.StringTypeNode n -> n;
+			case AST.AnySymbolTypeNode n -> n;
+			case AST.SymbolTypeNode n -> n;
+			case AST.TypeTypeNode n -> n;
 			case AST.NihilTypeNode n -> n;
 			case AST.F16TypeNode n -> n;
 			case AST.F32TypeNode n -> n;
@@ -69,6 +74,7 @@ public class Evaluator {
 
 		if (head instanceof AST.IdentNode op) {
 			return switch (op.name()) {
+				case "def" -> handleDef(list.elements(), frame);
 				case "fun" -> list;
 				case "quote" -> {
 					if (list.elements().size() < 2) throw new EvaluationError();
@@ -77,7 +83,8 @@ public class Evaluator {
 				case "if" -> handleIf(list.elements(), frame);
 				case "do" -> handleDo(list.elements(), frame);
 				case "print" -> handlePrint(list.elements(), frame);
-				case "list/get" -> handleListGet(list.elements(), frame);
+				case "get" -> handleListGet(list.elements(), frame);
+				case "concat" -> handleConcat(list.elements(), frame);
 				case "+", "-" -> handleMath(op.name(), list.elements(), frame);
 				case "eq", "<", ">" -> handleComparison(op.name(), list.elements(), frame);
 				default -> {
@@ -91,6 +98,21 @@ public class Evaluator {
 		AST targetFunction = eval(head, frame);
 		List<AST> args = list.elements().subList(1, list.elements().size());
 		return execute(targetFunction, args, frame);
+	}
+
+	private AST handleDef(List<AST> elements, Environment.Frame frame) {
+		if (elements.size() < 3) throw new EvaluationError();
+		if (!(elements.get(1) instanceof AST.IdentNode target)) throw new EvaluationError();
+
+		AST value = eval(elements.get(2), frame);
+
+		if (frame != null) {
+			frame.define(target.name(), value);
+		} else {
+			throw new EvaluationError();
+		}
+
+		return value;
 	}
 
 	private AST handleIf(List<AST> elements, Environment.Frame frame) {
@@ -147,6 +169,20 @@ public class Evaluator {
 		}
 
 		return innerElements.get(index);
+	}
+
+	private AST handleConcat(List<AST> elements, Environment.Frame frame) {
+		StringBuilder sb = new StringBuilder();
+
+		for (int i = 1; i < elements.size(); i++) {
+			AST evaluated = eval(elements.get(i), frame);
+			if (evaluated instanceof AST.StringNode strNode) {
+				sb.append(strNode.value());
+			} else {
+				throw new EvaluationError();
+			}
+		}
+		return new AST.StringNode(sb.toString());
 	}
 
 	private AST handleMath(String op, List<AST> elements, Environment.Frame frame) {
