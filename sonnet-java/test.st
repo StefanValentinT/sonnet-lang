@@ -23,6 +23,8 @@
 ))
 
 #(type is-odd (fun-type i32 (type-union true-type false-type)))
+(def comment (macro ls rs :(,ls ,rs)))
+
 
 (def main
 	(fun ()

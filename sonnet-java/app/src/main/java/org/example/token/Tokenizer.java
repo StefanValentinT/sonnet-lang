@@ -10,7 +10,7 @@ public class Tokenizer {
 
 	public List<Token> tokenize(String input) {
 		List<Token> tokens = new ArrayList<>();
-		tokens.add(new Token.OpeningParen());
+		// tokens.add(new Token.OpeningParen());
 		int length = input.length();
 		int pos = 0;
 
@@ -41,26 +41,6 @@ public class Tokenizer {
 
 					tokens.add(new Token.StringToken(input.substring(start, pos)));
 					pos++;
-					break;
-				}
-
-				case ':': {
-					pos++;
-					int start = pos;
-					while (pos < length) {
-						Matcher m = idPattern.matcher(String.valueOf(input.charAt(pos)));
-						if (!m.matches()) break;
-						pos++;
-					}
-					String lexeme = input.substring(start, pos);
-
-					if (lexeme.isEmpty()) {
-
-						tokens.add(new Token.IdentifierToken(":"));
-					} else {
-
-						tokens.add(new Token.SymbolToken(lexeme));
-					}
 					break;
 				}
 
@@ -111,48 +91,12 @@ public class Tokenizer {
 
 					String lexeme = input.substring(start, pos);
 					if (lexeme.isEmpty()) throw new TokenizerError();
-
-					Token token =
-							switch (lexeme) {
-								case "true" -> new Token.TrueToken();
-								case "false" -> new Token.FalseToken();
-								case "true-type" -> new Token.TrueTypeToken();
-								case "false-type" -> new Token.TrueTypeToken();
-								case "string-type" -> new Token.StringTypeToken();
-								case "sym-type" -> new Token.AnySymbolTypeToken();
-
-								case "nihil-type" -> new Token.NihilTypeToken();
-								case "nihil" -> new Token.NihilToken();
-
-								case "f16" -> new Token.F16TypeToken();
-								case "f32" -> new Token.F32TypeToken();
-								case "f64" -> new Token.F64TypeToken();
-
-								case "i8" -> new Token.I8TypeToken();
-								case "i16" -> new Token.I16TypeToken();
-								case "i32" -> new Token.I32TypeToken();
-								case "i64" -> new Token.I64TypeToken();
-
-								case "u8" -> new Token.U8TypeToken();
-								case "u16" -> new Token.U16TypeToken();
-								case "u32" -> new Token.U32TypeToken();
-								case "u64" -> new Token.U64TypeToken();
-
-								default -> {
-									if (lexeme.startsWith("sym-") && lexeme.endsWith("-type") && lexeme.length() > 9) {
-										String symbolVal = lexeme.substring(4, lexeme.length() - 5);
-										yield new Token.SymbolTypeToken(symbolVal);
-									}
-									yield new Token.IdentifierToken(lexeme);
-								}
-							};
-
-					tokens.add(token);
+					tokens.add(new Token.IdentifierToken(lexeme));
 					break;
 				}
 			}
 		}
-		tokens.add(new Token.ClosingParen());
+		// tokens.add(new Token.ClosingParen());
 		return tokens;
 	}
 

@@ -3,7 +3,9 @@ package org.example;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Scanner;
 import org.example.eval.Evaluator;
+import org.example.eval.Frame;
 import org.example.format.Formatter;
 import org.example.parser.Parser;
 import org.example.scanner.FileScanner;
@@ -14,30 +16,50 @@ import org.example.token.Tokenizer;
 public class App {
 
 	public static void main(String[] args) {
-		if (args.length < 2) {
-			printUsage();
-			return;
-		}
-
-		String mode = args[0].toLowerCase();
-		String filename = args[1];
-
 		FileScanner scanner = new FileScanner();
-		String fileContent = scanner.readFile(filename);
+		String mode = args[0].toLowerCase();
+		String filename;
+		String fileContent;
 
 		switch (mode) {
 			case "fmt":
+				filename = args[1];
+				fileContent = scanner.readFile(filename);
+
 				fmt(filename, fileContent);
 				break;
 			case "run":
+				filename = args[1];
+
+				fileContent = scanner.readFile(filename);
 				run(fileContent);
+				break;
+			case "repl":
+				startRepl();
 				break;
 			case "help":
 				printUsage();
 				break;
 			default:
-				System.out.println("Mode not recognized. Use mode help to get an overview of availaible modes.");
+				System.out.println(
+						"Mode '" + mode + "' not recognized. Use mode help to get an overview of availaible modes.");
 				break;
+		}
+	}
+
+	private static void startRepl() {
+		while (true) {
+			Scanner scanner = new Scanner(System.in);
+			System.out.print(">>> ");
+			String line = scanner.nextLine();
+			if (line == "exit") {
+				break;
+			}
+			List<Token> tokenStream = new Tokenizer().tokenize(line);
+			AST ast = new Parser().parse(tokenStream);
+			Evaluator eval = new Evaluator();
+			AST res = eval.eval(ast, new Frame());
+			System.out.println(res);
 		}
 	}
 
@@ -57,10 +79,11 @@ public class App {
 	private static void run(String fileContent) {
 		List<Token> tokenStream = new Tokenizer().tokenize(fileContent);
 		AST ast = new Parser().parse(tokenStream);
-		// System.out.println(ast);
+		System.out.println(ast);
 
 		Evaluator eval = new Evaluator();
-		eval.evaluate(ast);
+		System.out.println("Output:");
+		System.out.println(eval.eval(ast, new Frame()));
 	}
 
 	private static void printUsage() {
