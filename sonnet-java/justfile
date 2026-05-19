@@ -1,3 +1,0 @@
-default:
-	./gradlew spotlessApply
-	gradle clean run --args="run test2.st"

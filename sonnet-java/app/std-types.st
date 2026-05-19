@@ -1,1 +1,0 @@
-(type eq (fun t :(fun (t t) bool)))
