@@ -20,6 +20,16 @@ public class Frame {
 		bindings.put(name, value);
 	}
 
+	public void assign(String name, AST value) {
+		if (this.bindings.containsKey(name)) {
+			this.bindings.put(name, value);
+		} else if (this.parent != null) {
+			this.parent.assign(name, value);
+		} else {
+			throw new EvaluationError("Unbound variable: " + name);
+		}
+	}
+
 	public AST lookup(String name) {
 		if (bindings.containsKey(name)) {
 			return bindings.get(name);
@@ -33,5 +43,18 @@ public class Frame {
 		} else {
 			return false;
 		}
+	}
+
+	public StringBuilder toStringBuilder(StringBuilder sb) {
+		bindings.forEach((key, value) -> sb.append(key + " : " + value + "\n"));
+		if (parent != null) {
+			parent.toStringBuilder(sb);
+		}
+		return sb;
+	}
+
+	@Override
+	public String toString() {
+		return toStringBuilder(new StringBuilder("--- Frame ---\n")).append("\n-------------").toString();
 	}
 }

@@ -32,6 +32,11 @@ public class Tokenizer {
 					pos++;
 					break;
 
+				case '\'' :
+					tokens.add(new Token.QuoteToken());
+					pos++;
+					break;
+
 				case '"' : {
 					pos++;
 					int start = pos;

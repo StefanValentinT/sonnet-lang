@@ -1,3 +1,4 @@
+
 BUILD_PATH = ./src
 OUT_DIR    = ./build
 JAR_FILE   = ./build/app.jar

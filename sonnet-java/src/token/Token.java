@@ -2,6 +2,9 @@ package token;
 
 public sealed interface Token {
 
+	record QuoteToken() implements Token {
+	}
+
 	record IntToken(int value) implements Token {
 	}
 

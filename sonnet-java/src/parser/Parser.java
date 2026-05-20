@@ -20,14 +20,8 @@ public class Parser {
 			case Token.IntToken(var val) -> new AST.IntNode(val);
 			case Token.FloatToken(var val) -> new AST.FloatNode(val);
 			case Token.StringToken(var val) -> new AST.StringNode(val);
-			case Token.IdentifierToken(var val) -> {
-				if (val.equals(":")) {
-					AST quotedContent = parse(tokenStream);
-					yield new AST.ListNode(List.of(new AST.IdentNode("quote"), quotedContent));
-				} else {
-					yield new AST.IdentNode(val);
-				}
-			}
+			case Token.IdentifierToken(var val) -> new AST.IdentNode(val);
+			case Token.QuoteToken() -> new AST.ListNode(List.of(new AST.IdentNode("quote"), parse(tokenStream)));
 			case Token.OpeningParen() -> {
 				ArrayList<AST> listChildren = new ArrayList<>();
 				while (!tokenStream.isEmpty() && !(tokenStream.getFirst() instanceof Token.ClosingParen)) {

@@ -1,12 +1,16 @@
 package eval;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.*;
 import syntax.AST;
+import util.Zipper;
 
 public class Evaluator {
+	private final AST.ListNode unit = new AST.ListNode(
+			List.of(new AST.IdentNode("quote"), new AST.ListNode(List.of())));
+
 	public AST eval(AST node, Frame frame) {
-		return switch (node) {
+		AST ast = switch (node) {
 			case AST.IntNode n -> n;
 			case AST.FloatNode n -> n;
 			case AST.StringNode n -> n;
@@ -19,86 +23,161 @@ public class Evaluator {
 			case AST.ListNode list -> {
 				List<AST> elements = list.elements();
 				if (elements.isEmpty()) {
-					throw new EvaluationError("Cannot evaluate an empty list.");
+					yield list; // () -> () symbolic evaluation
 				}
+
+				if (isFunction(list)) {
+					yield list;
+				} else if (isQuote(list)) {
+					yield elements.get(1);
+				} else if (isConditional(list)) {
+					yield evalConditional(elements.get(1), elements.get(2), elements.get(3), frame);
+				} else if (isSet(list)) {
+					yield evalSet(elements.get(1), elements.get(2), frame);
+				}
+
+				// Application
 
 				AST first = elements.get(0);
+				List<AST> arguments = elements.subList(1, elements.size());
 
-				if (first instanceof AST.IdentNode id && id.name().equals("fun")) {
-					if (elements.size() != 3) {
-						throw new EvaluationError(
-								"Invalid 'fun' syntax. Expected (fun param body) or (fun (params) body)");
-					}
-					AST paramsCheck = elements.get(1);
-					if (!(paramsCheck instanceof AST.IdentNode) && !(paramsCheck instanceof AST.ListNode)) {
-						throw new EvaluationError(
-								"Function parameters must be an identifier or a list of identifiers.");
-					}
-					yield list;
+				if (isBuiltIn(first)) {
+					yield evaluateBuiltIn(((AST.IdentNode) first).name(), arguments, frame);
 				}
 
-				if (first instanceof AST.IdentNode id && isBuiltIn(id.name())) {
-					yield evaluateBuiltIn(id.name(), elements.subList(1, elements.size()), frame);
+				AST callee = eval(first, frame);
+
+				if (isFunction(callee)) {
+					yield evalFunctionApp((AST.ListNode) callee, arguments, frame);
 				}
 
-				AST callable = eval(first, frame);
-
-				if (callable instanceof AST.ListNode funNode) {
-					List<AST> funElements = funNode.elements();
-					if (!funElements.isEmpty() && funElements.get(0) instanceof AST.IdentNode id
-							&& id.name().equals("fun")) {
-
-						AST paramNode = funElements.get(1);
-						AST body = funElements.get(2);
-
-						List<AST> evaluatedArgs = elements.subList(1, elements.size()).stream()
-								.map(arg -> eval(arg, frame)).toList();
-
-						List<AST> params = (paramNode instanceof AST.ListNode pList)
-								? pList.elements()
-								: List.of(paramNode);
-
-						if (params.size() != evaluatedArgs.size()) {
-							throw new EvaluationError("Arity mismatch: function expects " + params.size()
-									+ " arguments, but received " + evaluatedArgs.size());
-						}
-
-						Frame bodyFrame = new Frame(frame);
-						for (int i = 0; i < params.size(); i++) {
-							if (!(params.get(i) instanceof AST.IdentNode paramId)) {
-								throw new EvaluationError("Function parameter must be an identifier symbol.");
-							}
-							bodyFrame.define(paramId.name(), evaluatedArgs.get(i));
-						}
-
-						yield eval(body, bodyFrame);
-					}
-				}
-
-				throw new EvaluationError(
-						"First element of the list is not a function or builtin operator: " + callable);
+				throw new EvaluationError("First element of the list is not a function or builtin operator: " + callee);
 			}
 		};
+		System.out.println(frame);
+		return ast;
 	}
 
 	private boolean isFunction(AST f) {
 		if (f instanceof AST.ListNode funNode) {
 			List<AST> funElements = funNode.elements();
-			return !funElements.isEmpty() && funElements.get(0) instanceof AST.IdentNode id && id.name().equals("fun");
-		} else {
-			return false;
+			if (funElements.size() != 3)
+				return false;
+			if (!(funElements.get(0) instanceof AST.IdentNode id && id.name().equals("fun")))
+				return false;
+			return isFormals(funElements.get(1));
 		}
+		return false;
 	}
 
-	private boolean isBuiltIn(String name) {
-		return name.equals("+") || name.equals("-") || name.equals("*") || name.equals("/") || name.equals("print");
+	private boolean isQuote(AST q) {
+		if (q instanceof AST.ListNode quoteNode) {
+			List<AST> quoteElements = quoteNode.elements();
+			if (quoteElements.size() != 2)
+				return false;
+			if (!(quoteElements.get(0) instanceof AST.IdentNode id && id.name().equals("quote")))
+				return false;
+			return true;
+		}
+		return false;
+	}
+
+	private boolean isConditional(AST c) {
+		if (c instanceof AST.ListNode cNode) {
+			List<AST> cElements = cNode.elements();
+			if (cElements.size() != 4)
+				return false;
+			if (!(cElements.get(0) instanceof AST.IdentNode id && id.name().equals("if")))
+				return false;
+			return true;
+		}
+		return false;
+	}
+
+	private boolean isSet(AST c) {
+		if (c instanceof AST.ListNode cNode) {
+			List<AST> cElements = cNode.elements();
+			if (cElements.size() != 3)
+				return false;
+			if (!(cElements.get(0) instanceof AST.IdentNode id && id.name().equals("set")))
+				return false;
+			return true;
+		}
+		return false;
+	}
+
+	private AST evalConditional(AST cond, AST then, AST els, Frame frame) {
+		AST c = eval(cond, frame);
+		if (c.equals(new AST.IdentNode("true")))
+			return eval(then, frame);
+		if (c.equals(new AST.IdentNode("false")))
+			return eval(els, frame);
+		throw new EvaluationError("Conditionals condition must be to either 'true or 'false.");
+	}
+
+	private AST evalSet(AST target, AST expr, Frame frame) {
+		if (!(target instanceof AST.IdentNode id)) {
+			throw new EvaluationError("set assignment target must be a valid identifier symbol.");
+		}
+		AST calculatedValue = eval(expr, frame);
+		frame.assign(id.name(), calculatedValue);
+		return unit;
+	}
+
+	private AST evalFunctionApp(AST.ListNode callee, List<AST> rawArgs, Frame frame) {
+		List<AST> args = rawArgs.stream().map(arg -> eval(arg, frame)).toList();
+
+		Frame bodyFrame = new Frame(frame);
+
+		AST paramNode = callee.elements().get(1);
+		List<AST> paramsRaw = (paramNode instanceof AST.ListNode pList) ? pList.elements() : List.of(paramNode);
+		List<String> params = paramsRaw.stream().map(e -> {
+			if (e instanceof AST.IdentNode id) {
+				return id.name();
+			}
+			{
+				throw new EvaluationError("Formals must be a list of identifiers or a singular identifer.");
+			}
+		}).toList();
+
+		if (params.stream().collect(Collectors.toSet()).size() != params.size()) {
+			throw new EvaluationError("It is an error for a variable to appear more than once in formals.");
+		}
+
+		AST body = callee.elements().get(2);
+
+		if (params.size() != args.size()) {
+			throw new EvaluationError(
+					"Arity mismatch: function expects " + params.size() + " arguments, but received " + args.size());
+		}
+
+		Zipper.zip(params.stream(), args.stream(), (param, arg) -> {
+
+			bodyFrame.define(param, arg);
+
+		});
+
+		return eval(body, bodyFrame);
+	}
+
+	private boolean isFormals(AST f) {
+		if (f instanceof AST.IdentNode id)
+			return true;
+		if (f instanceof AST.ListNode list)
+			return list.elements().stream().allMatch(e -> e instanceof AST.IdentNode id);
+		return false;
+	}
+
+	private boolean isBuiltIn(AST first) {
+		if (first instanceof AST.IdentNode id) {
+			String name = id.name();
+			return name.equals("+") || name.equals("-") || name.equals("*") || name.equals("/") || name.equals("print");
+		}
+		return false;
 	}
 
 	private AST evaluateBuiltIn(String op, List<AST> rawArgs, Frame frame) {
-		List<AST> args = new ArrayList<>();
-		for (AST arg : rawArgs) {
-			args.add(eval(arg, frame));
-		}
+		List<AST> args = rawArgs.stream().map(arg -> eval(arg, frame)).toList();
 
 		return switch (op) {
 			case "print" -> {
@@ -116,53 +195,59 @@ public class Evaluator {
 			}
 
 			case "+", "-", "*", "/" -> {
-				boolean isFloat = false;
-				for (AST arg : args) {
-					if (arg instanceof AST.FloatNode) {
-						isFloat = true;
-						break;
-					} else if (!(arg instanceof AST.IntNode)) {
-						throw new EvaluationError("Built-in math operator '" + op + "' expects numeric arguments.");
-					}
-				}
-
+				boolean isFloat = rawArgs.get(0) instanceof AST.FloatNode node;
 				if (isFloat) {
-					double result = getNumericValue(args.get(0));
-
-					for (int i = 1; i < args.size(); i++) {
-						double val = getNumericValue(args.get(i));
-						switch (op) {
-							case "+" -> result += val;
-							case "-" -> result -= val;
-							case "*" -> result *= val;
-							case "/" -> {
-								if (val == 0.0)
-									throw new EvaluationError("Division by zero error.");
-								result /= val;
-							}
-						}
-					}
-					yield new AST.FloatNode(result);
+					yield new AST.FloatNode(switch (op) {
+						case "+" -> args.stream().reduce(0.0, (acc, arg) -> {
+							if (arg instanceof AST.FloatNode f)
+								return (acc + f.value());
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a + b);
+						case "-" -> args.stream().reduce(null, (acc, arg) -> {
+							if (arg instanceof AST.FloatNode f)
+								return (acc == null) ? f.value() : acc - f.value();
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a - b);
+						case "*" -> args.stream().reduce(0.0, (acc, arg) -> {
+							if (arg instanceof AST.FloatNode f)
+								return (acc * f.value());
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a * b);
+						case "/" -> args.stream().reduce(null, (acc, arg) -> {
+							if (arg instanceof AST.FloatNode f)
+								return (acc == null) ? f.value() : acc / f.value();
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a / b);
+						default ->
+							throw new EvaluationError("Impossible state. This would mean an undefined math operation.");
+					});
 				} else {
-					int result = ((AST.IntNode) args.get(0)).value();
-
-					for (int i = 1; i < args.size(); i++) {
-						int val = ((AST.IntNode) args.get(i)).value();
-						switch (op) {
-							case "+" -> result += val;
-							case "-" -> result -= val;
-							case "*" -> result *= val;
-							case "/" -> {
-								if (val == 0)
-									throw new EvaluationError("Division by zero error.");
-								result /= val;
-							}
-						}
-					}
-					yield new AST.IntNode(result);
+					yield new AST.IntNode(switch (op) {
+						case "+" -> args.stream().reduce(0, (acc, arg) -> {
+							if (arg instanceof AST.IntNode i)
+								return (acc + i.value());
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a + b);
+						case "-" -> args.stream().reduce(null, (acc, arg) -> {
+							if (arg instanceof AST.IntNode i)
+								return (acc == null) ? i.value() : acc / i.value();
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a - b);
+						case "*" -> args.stream().reduce(0, (acc, arg) -> {
+							if (arg instanceof AST.IntNode i)
+								return (acc * i.value());
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a * b);
+						case "/" -> args.stream().reduce(null, (acc, arg) -> {
+							if (arg instanceof AST.IntNode i)
+								return (acc == null) ? i.value() : acc / i.value();
+							throw new EvaluationError("Mixed  number types in builtin math operation '" + op + "'.");
+						}, (a, b) -> a / b);
+						default ->
+							throw new EvaluationError("Impossible state. This would mean an undefined math operation.");
+					});
 				}
 			}
-
 			default -> throw new EvaluationError("Unknown built-in operator: " + op);
 		};
 	}
