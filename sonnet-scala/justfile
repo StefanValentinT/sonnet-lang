@@ -1,0 +1,3 @@
+default:
+	scalafmt ./src/
+	mill run run test.st
