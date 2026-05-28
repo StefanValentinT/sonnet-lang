@@ -2,14 +2,21 @@ package eval
 
 import syntax.Node
 import app.CompilerContext
+import syntax.Node.IdentNode
+import pprint.pprintln
 
 class Evaluator(ctx: CompilerContext) {
+
+    private var expansionPhase = false
 
     private val unit: Node.ListNode = Node.ListNode(
       List(Node.IdentNode("quote"), Node.ListNode(List.empty))
     )
 
-    def evaluate(node: Node): Node = eval(node, Frame())
+    def evaluate(node: Node): Node = {
+        // expansionPhase = true;
+        eval(node, Frame())
+    }
 
     def eval(node: Node, frame: Frame): Node = {
         val result = node match {
@@ -25,30 +32,54 @@ class Evaluator(ctx: CompilerContext) {
             }
 
             case list @ Node.ListNode(elements) => {
-                if (elements.isEmpty) {
-                    // () -> () symbolic evaluation
-                    list
-                } else if (isFunction(list)) {
-                    list
-                } else if (isQuote(list)) {
-                    elements(1)
-                } else if (isConditional(list)) {
-                    evalConditional(elements(1), elements(2), elements(3), frame)
-                } else if (isSet(list)) {
-                    evalSet(elements(1), elements(2), frame)
-                } else {
-                    // Application
-                    val first     = elements.head
-                    val arguments = elements.tail
+                val splicedElements = elements.flatMap {
+                    case Node.ListNode(Node.IdentNode("splice") :: target :: Nil) =>
+                        eval(target, frame) match {
+                            case Node.ListNode(innerElements) => innerElements
+                            case other                        => throw EvaluationError("Splice can only act upon lists.")
+                        }
+                    case ordinaryNode =>
+                        List(ordinaryNode)
+                }
 
-                    if (isBuiltIn(first)) {
-                        evaluateBuiltIn(first.asInstanceOf[Node.IdentNode].name, arguments, frame)
-                    } else {
-                        val callee = eval(first, frame)
-                        if (isFunction(callee)) {
-                            evalFunctionApp(callee.asInstanceOf[Node.ListNode], arguments, frame)
-                        } else {
-                            throw new EvaluationError(s"First element of the list is not a function or builtin operator: $callee")
+                splicedElements match {
+                    case Nil => list // () -> () symbolic evaluation
+
+                    case Node.IdentNode("quote") :: value :: Nil => value
+
+                    case Node.IdentNode("if") :: cond :: thenBr :: elseBr :: Nil =>
+                        evalConditional(cond, thenBr, elseBr, frame)
+
+                    case Node.IdentNode("set") :: target :: expr :: Nil =>
+                        evalSet(target, expr, frame)
+                    case Node.IdentNode("val") :: target :: expr :: Nil =>
+                        evalDefine(target, expr, frame, false)
+                    case Node.IdentNode("var") :: target :: expr :: Nil =>
+                        evalDefine(target, expr, frame, true)
+
+                    case Node.IdentNode("fun") :: formals :: body if isFormals(formals, frame) => list
+
+                    case Node.IdentNode("do") :: body => {
+                        val bodyScope = Frame(frame)
+                        body.foldLeft[Node](unit)((_, e) => eval(e, bodyScope))
+                    }
+
+                    case (n @ Node.IdentNode(op)) :: arguments if isBuiltIn(n) =>
+                        evaluateBuiltIn(op, arguments, frame)
+
+                    case first :: arguments => {
+                        first match {
+                            case IdentNode(name) if isSpecialForm(name) => throw new EvaluationError("Wrong usage of special form.")
+                            case _                                      => ()
+                        }
+
+                        eval(first, frame) match {
+                            case callee: Node.ListNode if callee.elements.headOption.contains(Node.IdentNode("fun")) =>
+                                evalFunctionApp(callee, arguments, frame)
+                            // case callee: Node.ListNode if callee.elements.headOption.contains(Node.IdentNode("syn")) =>
+                            // evalSyntaxApp(callee, arguments, frame)
+                            case callee =>
+                                throw new EvaluationError(s"Not a function or builtin operator: $callee")
                         }
                     }
                 }
@@ -58,52 +89,8 @@ class Evaluator(ctx: CompilerContext) {
         result
     }
 
-    private def isFunction(node: Node): Boolean = {
-        node match {
-            case Node.ListNode(elements) if elements.size == 3 => {
-                elements.head match {
-                    case Node.IdentNode("fun") => isFormals(elements(1))
-                    case _                     => false
-                }
-            }
-            case _ => false
-        }
-    }
-
-    private def isQuote(node: Node): Boolean = {
-        node match {
-            case Node.ListNode(elements) if elements.size == 2 => {
-                elements.head match {
-                    case Node.IdentNode("quote") => true
-                    case _                       => false
-                }
-            }
-            case _ => false
-        }
-    }
-
-    private def isConditional(node: Node): Boolean = {
-        node match {
-            case Node.ListNode(elements) if elements.size == 4 => {
-                elements.head match {
-                    case Node.IdentNode("if") => true
-                    case _                    => false
-                }
-            }
-            case _ => false
-        }
-    }
-
-    private def isSet(node: Node): Boolean = {
-        node match {
-            case Node.ListNode(elements) if elements.size == 3 => {
-                elements.head match {
-                    case Node.IdentNode("set") => true
-                    case _                     => false
-                }
-            }
-            case _ => false
-        }
+    private def isSpecialForm(n: String): Boolean = {
+        List("fun", "quote", "let-syn", "if", "set", "do").contains(n)
     }
 
     private def evalConditional(cond: Node, thenBranch: Node, elseBranch: Node, frame: Frame): Node = {
@@ -125,8 +112,52 @@ class Evaluator(ctx: CompilerContext) {
         }
     }
 
+    private def evalDefine(target: Node, expr: Node, frame: Frame, mutable: Boolean): Node = {
+        target match {
+            case Node.IdentNode(name) => {
+                val calculatedValue = eval(expr, frame)
+                frame.define(name, calculatedValue, mutable)
+                unit
+            }
+            case _ => throw new EvaluationError("Definition target must be a valid identifier symbol.")
+        }
+    }
+
     private def evalFunctionApp(callee: Node.ListNode, rawArgs: List[Node], frame: Frame): Node = {
         val args      = rawArgs.map(arg => eval(arg, frame))
+        val bodyFrame = new Frame()
+
+        val paramNode = callee.elements(1)
+        val paramsRaw = paramNode match {
+            case Node.ListNode(pList) => pList
+            case other                => List(other)
+        }
+
+        val params = paramsRaw.map {
+            case Node.IdentNode(name) => name
+            case _                    => throw new EvaluationError("Formals must be a list of identifiers or a singular identifier.")
+        }
+
+        if (params.distinct.size != params.size) {
+            throw new EvaluationError("It is an error for a variable to appear more than once in formals.")
+        }
+
+        val callee_elems = callee.elements
+
+        val body = callee_elems.slice(2, callee_elems.size)
+
+        if (params.size != args.size) {
+            throw new EvaluationError(s"Arity mismatch: function expects ${params.size} arguments, but received ${args.size}")
+        }
+
+        params.zip(args).foreach { case (param, arg) =>
+            bodyFrame.define(param, arg, false)
+        }
+
+        body.foldLeft[Node](unit)((_, e) => eval(e, bodyFrame))
+    }
+
+    private def evalSyntaxApp(callee: Node.ListNode, args: List[Node], frame: Frame): Node = {
         val bodyFrame = new Frame(frame)
 
         val paramNode = callee.elements(1)
@@ -151,17 +182,38 @@ class Evaluator(ctx: CompilerContext) {
         }
 
         params.zip(args).foreach { case (param, arg) =>
-            bodyFrame.define(param, arg)
+            bodyFrame.define(param, arg, false)
         }
 
-        eval(body, bodyFrame)
+        val expandedAst = substitute(body, bodyFrame)
+
+        eval(expandedAst, frame)
     }
 
-    private def isFormals(node: Node): Boolean = {
+    private def substitute(node: Node, macroFrame: Frame): Node = {
         node match {
-            case Node.IdentNode(_)       => true
-            case Node.ListNode(elements) => elements.forall(_.isInstanceOf[Node.IdentNode])
-            case _                       => false
+            case Node.IdentNode(name) =>
+                macroFrame.lookup(name).getOrElse(node)
+
+            case Node.ListNode(elements) =>
+                Node.ListNode(elements.map(e => substitute(e, macroFrame)))
+
+            case other =>
+                other
+        }
+    }
+
+    private def isFormals(node: Node, frame: Frame): Boolean = {
+        node match {
+            case Node.IdentNode(name) if !frame.contains(name) => true
+            case Node.ListNode(elements) =>
+                elements.forall(element =>
+                    element match {
+                        case Node.IdentNode(name) => !frame.contains(name)
+                        case _                    => false
+                    }
+                )
+            case _ => false
         }
     }
 

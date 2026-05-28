@@ -1,0 +1,41 @@
+type ToString[T] = class{
+	to_string : T -> String
+}
+
+type Printer[T] = object(
+	prefix : String,
+	other_field : i32
+)
+
+instance Printer[T] {
+	def x = 10
+	def my_method(&self, other_arg : i32): i32 = if self.x == 10 then other_arg else self.other_field
+
+	def print(self: &Self, obj: inst ToString): Unit = {
+		print(self.prefix)
+		print(to_string(obj))
+	}
+}
+
+def fib = n -> if n < 2 then n else fib(n-1) + fib(n-2)
+
+type None = object()
+type Some[T] = object(value:T)
+type Option[T] = Some[T] | None
+
+instance ToString for Option[inst ToString]{
+	def to_string(&self) = case self of
+		Some -> "Some: " + to_string(self.value),
+		None -> "Nothing"
+}
+
+def flatMap(f, opt) = case opt of
+	Some -> f opt.value,
+	None -> None{}
+
+def main = () -> {
+	println("Hello world!")
+	val x = Printer(prefix="Printing... ", other_field=5)
+	x::print(Some(10))
+	println(fib(10))
+	}

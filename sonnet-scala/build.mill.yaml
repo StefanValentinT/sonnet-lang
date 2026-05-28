@@ -1,5 +1,0 @@
-extends: ScalaModule
-scalaVersion: 3.8.3
-
-mvnDeps:
-- com.lihaoyi::pprint:0.9.6

@@ -5,6 +5,12 @@ import scala.collection.mutable
 
 class EvaluationError(message: String) extends RuntimeException(message)
 
+enum Modifiability {
+    case Mutable
+    case Immutable
+}
+class Variable(val name: String, val mod: Modifiability)
+
 class Frame(val parent: Option[Frame]) {
 
     def this(parentFrame: Frame) = {
@@ -15,42 +21,49 @@ class Frame(val parent: Option[Frame]) {
         this(None)
     }
 
-    private val bindings: mutable.Map[String, Node] = mutable.Map.empty[String, Node]
+    private val bindings: mutable.Map[Variable, Node] = mutable.Map.empty[Variable, Node]
 
-    def define(name: String, value: Node): Unit = {
-        bindings.put(name, value)
+    def define(name: String, value: Node, mutable: Boolean): Unit = {
+        if (bindings.keys.exists(_.name == name)) {
+            throw new EvaluationError(s"Identifier '$name' is already bound in this scope.")
+        }
+        val mod = if mutable then Modifiability.Mutable else Modifiability.Immutable
+        bindings.put(Variable(name, mod), value)
     }
 
     def assign(name: String, value: Node): Unit = {
-        if (bindings.contains(name)) {
-            bindings.put(name, value)
-        } else {
-            parent match {
-                case Some(p) => p.assign(name, value)
-                case None    => throw new EvaluationError(s"Unbound variable: $name")
-            }
+        bindings.keys.find(_.name == name) match {
+            case Some(v) =>
+                if (v.mod == Modifiability.Immutable) {
+                    throw new EvaluationError(s"Cannot reassign immutable variable: $name")
+                }
+                bindings.put(v, value)
+            case None =>
+                parent match {
+                    case Some(p) => p.assign(name, value)
+                    case None    => throw new EvaluationError(s"Unbound variable: $name")
+                }
         }
     }
 
     def lookup(name: String): Option[Node] = {
-        bindings.get(name) match {
-            case v @ Some(value) => v
-            case None => {
+        bindings.find { case (v, _) => v.name == name } match {
+            case Some((_, value)) => Some(value)
+            case None =>
                 parent match {
                     case Some(p) => p.lookup(name)
                     case None    => None
                 }
-            }
         }
     }
 
     def contains(name: String): Boolean = {
-        bindings.contains(name)
+        bindings.keys.exists(_.name == name)
     }
 
     def toStringBuilder(sb: StringBuilder): StringBuilder = {
-        bindings.foreach { case (key, value) =>
-            sb.append(s"$key : $value\n")
+        bindings.foreach { case (v, value) =>
+            sb.append(s"${v.name} (${v.mod}) : $value\n")
         }
         parent.foreach { p =>
             p.toStringBuilder(sb)

@@ -1,3 +1,5 @@
 default:
+	mill --bsp-install
+	scalafmt ./build.mill
 	scalafmt ./src/
 	mill run run test.st

@@ -6,7 +6,7 @@ import parser.Parser
 import scanner.FileScanner
 import syntax.Node
 import token.tokenize
-import eval.Evaluator
+import eval.{Evaluator, MacroExpander}
 import pprint.pprintln
 
 class CompilerError(message: String) extends RuntimeException(message) {
@@ -27,7 +27,7 @@ object App {
     def main(args: Array[String]): Unit = {
         val scanner             = new FileScanner()
         val mode                = args(0).toLowerCase()
-        val ctx                 = CompilerContext.fromArgs(args.slice(3, args.size))
+        val ctx                 = CompilerContext.fromArgs(args)
         var filename: String    = ""
         var fileContent: String = ""
 
@@ -58,7 +58,10 @@ object App {
     def eval(prog: String, ctx: CompilerContext): Node = {
         val tokens = tokenize(prog)
         val ast    = Parser().parse(tokens)
-        val res    = Evaluator(ctx).evaluate(ast)
+        pprintln(ast)
+        val exp = MacroExpander.expandMacros(ast)
+        println("Expanded AST: " + exp)
+        val res = Evaluator(ctx).evaluate(exp)
         res
     }
 
