@@ -4,7 +4,8 @@ import io.{FileScanner, FileWriter}
 import syntax.*
 import pprint.pprintln
 import codegen.*
-import assembly.*
+import arm64.*
+import tac.*
 
 open class CompilerError(who: String, detail: String = null)
     extends RuntimeException({
@@ -31,9 +32,12 @@ object App {
             case filename => {
                 val fileContent = FileScanner.readFile(filename)
                 println(s"Compiling $filename:")
-                val ast       = Parser.fromString(fileContent).parse()
-                val asmAst    = codegenProgram(ast)
-                val asmString = Emitter().emitProgram(asmAst)
+                val ast      = Parser.fromString(fileContent).parse()
+                val tacAst   = TacEmitter(ast).emitProgramTac()
+                val asmAst   = codegenProgram(tacAst)
+                val fixedAst = PseudoRegisterReplacer().inProgram(asmAst)
+                pprintln(fixedAst)
+                val asmString = Emitter().emitProgram(fixedAst)
                 println(asmString)
                 FileWriter.writeFile(filename, asmString)
             }

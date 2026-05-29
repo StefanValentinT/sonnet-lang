@@ -37,7 +37,17 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def parseExpression(): Expression = {
-        Constant(expect[TokIntLit].value)
+        tokenizer.next() match {
+            case Some(TokIntLit(value)) => Constant(value)
+            case Some(OpTilde())        => Unary(UnaryOp.Complement, parseExpression())
+            case Some(OpMinus())        => Unary(UnaryOp.Negate, parseExpression())
+            case Some(LParen()) => {
+                val in = parseExpression()
+                expect(RParen())
+                in
+            }
+            case _ => throw ParserError("Incomplete Expression.")
+        }
     }
 
     def expect[T <: Token](using tag: ClassTag[T]): T = {

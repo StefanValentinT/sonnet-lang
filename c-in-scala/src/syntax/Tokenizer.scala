@@ -31,6 +31,7 @@ case class OpComma()       extends Token // ,
 case class OpSemicolon()   extends Token // ,
 case class OpPipe()        extends Token // |
 case class OpAmp()         extends Token // &
+case class OpTilde()       extends Token // ~
 case class OpDot()         extends Token // .
 case class OpDoubleColon() extends Token // ::
 case class OpRef()         extends Token // .*
@@ -75,6 +76,7 @@ class Tokenizer(input: String) {
       (";".r, _ => OpSemicolon()),
       ("\\|".r, _ => OpPipe()),
       ("&".r, _ => OpAmp()),
+      ("~".r, _ => OpTilde()),
       ("\\.".r, _ => OpDot()),
       ("\\+".r, _ => OpPlus()),
       ("\\-".r, _ => OpMinus()),
@@ -128,5 +130,9 @@ class Tokenizer(input: String) {
         val tok = peek()
         precomputedToken = None
         tok
+    }
+
+    def consume(): Unit = {
+        next(); ()
     }
 }

@@ -1,5 +1,5 @@
 default:
-	# mill --bsp-install
+	mill --bsp-install
 	# scalafmt ./build.mill
 	scalafmt ./src/
 	mill run test2.lang

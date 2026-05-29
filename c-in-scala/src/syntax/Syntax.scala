@@ -6,8 +6,13 @@ case class Program(items: FunctionDef)
 
 case class FunctionDef(name: String, body: Statement)
 
-abstract class Statement
+abstract sealed class Statement
 case class Return(exp: Expression) extends Statement
 
-abstract class Expression
-case class Constant(value: Int) extends Expression
+abstract sealed class Expression
+case class Constant(value: Int)                extends Expression
+case class Unary(op: UnaryOp, exp: Expression) extends Expression
+
+enum UnaryOp {
+    case Complement, Negate
+}
