@@ -1,5 +1,5 @@
 # Program
 
 int main(void){
-	return -(-1);
+	return -1 * 2 + (--10 * (4+5)) % 20;
 }

@@ -40,13 +40,27 @@ class Emitter() {
             val mnemonic = if (op == Asm.UnaryOp.Neg) "neg" else "mvn"
             inst(s"$mnemonic ${showOp(operand)}, ${showOp(operand)}")
         }
+        case Asm.Binary(op, s1, s2, d) => {
+            val mnemonic = op match {
+                case Asm.BinaryOp.Add  => "add"
+                case Asm.BinaryOp.Sub  => "sub"
+                case Asm.BinaryOp.Mult => "mul"
+                case Asm.BinaryOp.Div  => "sdiv"
+            }
+            inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
+        }
+        case Asm.Msub(s1, s2, s3, d) => {
+            sb.append(s"    msub ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}, ${showOp(s3)}")
+        }
     }
 
     def showOp(o: Asm.Operand): String = o match {
-        case Asm.Imm(ival)            => s"#$ival"
-        case Asm.StackSlot(offset)    => s"[x29, #$offset]"
-        case Asm.Register(Asm.Reg.W0) => "w0"
-        case Asm.Register(Asm.Reg.W9) => "w9"
-        case _                        => throw new RuntimeException("Unexpected operand type")
+        case Asm.Imm(ival)             => s"#$ival"
+        case Asm.StackSlot(offset)     => s"[x29, #$offset]"
+        case Asm.Register(Asm.Reg.W0)  => "w0"
+        case Asm.Register(Asm.Reg.W9)  => "w9"
+        case Asm.Register(Asm.Reg.W10) => "w10"
+        case Asm.Register(Asm.Reg.W11) => "w11"
+        case _                         => throw new RuntimeException("Unexpected operand type")
     }
 }

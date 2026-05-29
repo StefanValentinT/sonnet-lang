@@ -1,7 +1,7 @@
 package arm64
 
 import tac.Tac
-import scala.collection.mutable.Map
+import scala.collection.mutable.{Map, ListBuffer}
 
 def codegenProgram(p: Tac.Program): Asm.Program =
     Asm.Program(codegenFunction(p.items))
@@ -17,7 +17,7 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
           Asm.Ret()
         )
 
-    case Tac.Unary(op, src, dest) =>
+    case Tac.Unary(op, src, dest) => {
         val asmOp  = convertUnOp(op)
         val asmSrc = codegenTacVal(src)
         val asmDst = codegenTacVal(dest)
@@ -26,6 +26,27 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
           Asm.Mov(asmSrc, asmDst),
           Asm.Unary(asmOp, asmDst)
         )
+    }
+    case Tac.Binary(Tac.BinaryOp.Remainder, src1, src2, dest) => {
+        val s1 = codegenTacVal(src1)
+        val s2 = codegenTacVal(src2)
+        val d  = codegenTacVal(dest)
+
+        val pseudoQuotient = d match {
+            case Asm.PseudoReg(name) => Asm.PseudoReg(s"${name}_quot")
+            case _                   => Asm.PseudoReg("rem_quot_temp")
+        }
+
+        List(
+          Asm.Binary(Asm.BinaryOp.Div, s1, s2, pseudoQuotient),
+          Asm.Msub(pseudoQuotient, s2, s1, d)
+        )
+    }
+    case Tac.Binary(op, src1, src2, dest) => {
+        List(
+          Asm.Binary(convertBinOp(op), codegenTacVal(src1), codegenTacVal(src2), codegenTacVal(dest))
+        )
+    }
 }
 
 def codegenTacVal(v: Tac.Val): Asm.Operand = v match {
@@ -38,10 +59,35 @@ private def convertUnOp(op: Tac.UnaryOp): Asm.UnaryOp = op match {
     case Tac.UnaryOp.Negate     => Asm.UnaryOp.Neg
 }
 
+private def convertBinOp(op: Tac.BinaryOp): Asm.BinaryOp = op match {
+    case Tac.BinaryOp.Add      => Asm.BinaryOp.Add
+    case Tac.BinaryOp.Subtract => Asm.BinaryOp.Sub
+    case Tac.BinaryOp.Multiply => Asm.BinaryOp.Mult
+    case Tac.BinaryOp.Divide   => Asm.BinaryOp.Div
+    case _                     => throw new RuntimeException("Remainder handled explicitly")
+}
+
 class PseudoRegisterReplacer {
 
     private val stackMap      = Map[String, Int]()
     private var currentOffset = 0
+
+    // Ensures that an operand is in a register.
+    // If that is not the case it is loaded into the egister specified by the second parameter.
+    // It modifies the ListBuffer it receives to contain the instructions necessary to load
+    // and returns a register operand that contains the operand.
+    private def ensureReg(op: Asm.Operand, scratch: Asm.Reg, instr: ListBuffer[Asm.Instruction]): Asm.Register = op match {
+        case r: Asm.Register => r
+        case slot: Asm.StackSlot => {
+            instr += Asm.Load(slot, Asm.Register(scratch))
+            Asm.Register(scratch)
+        }
+        case imm: Asm.Imm => {
+            instr += Asm.Mov(imm, Asm.Register(scratch))
+            Asm.Register(scratch)
+        }
+        case _ => throw new RuntimeException("Unexpected operand")
+    }
 
     def inProgram(p: Asm.Program): Asm.Program = {
         val newFun = replaceInFunction(p.items)
@@ -113,6 +159,38 @@ class PseudoRegisterReplacer {
                             List(Asm.Unary(op, newOperand))
                         }
                     }
+                }
+                case Asm.Binary(op, s1, s2, d) => {
+                    val buffer = ListBuffer[Asm.Instruction]()
+                    val regS1  = ensureReg(replaceOperand(s1), Asm.Reg.W9, buffer)
+                    val regS2  = ensureReg(replaceOperand(s2), Asm.Reg.W10, buffer)
+                    val finalD = replaceOperand(d)
+
+                    val regD = finalD match {
+                        case r: Asm.Register => r
+                        case _               => Asm.Register(Asm.Reg.W11)
+                    }
+
+                    buffer += Asm.Binary(op, regS1, regS2, regD)
+                    if (finalD.isInstanceOf[Asm.StackSlot]) {
+                        buffer += Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot])
+                    }
+                    buffer.toList
+                }
+                case Asm.Msub(s1, s2, s3, d) => {
+                    val buffer = ListBuffer[Asm.Instruction]()
+                    val regS1  = ensureReg(replaceOperand(s1), Asm.Reg.W9, buffer)
+                    val regS2  = ensureReg(replaceOperand(s2), Asm.Reg.W10, buffer)
+                    val regS3  = ensureReg(replaceOperand(s3), Asm.Reg.W11, buffer)
+                    val finalD = replaceOperand(d)
+
+                    val regD = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(Asm.Reg.W9)
+
+                    buffer += Asm.Msub(regS1, regS2, regS3, regD)
+                    if (finalD.isInstanceOf[Asm.StackSlot]) {
+                        buffer += Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot])
+                    }
+                    buffer.toList
                 }
                 case other => {
                     List(other)

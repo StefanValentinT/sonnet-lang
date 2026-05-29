@@ -31,22 +31,57 @@ class Parser(tokenizer: Tokenizer) {
 
     def parseStatement(): Statement = {
         expect(KwReturn())
-        val rv = parseExpression()
+        val rv = parseExpression(0)
         expect(OpSemicolon())
         Return(rv)
     }
 
-    def parseExpression(): Expression = {
+    def precedence(t: Token): Int = t match {
+        case OpPlus()  => 10
+        case OpMinus() => 10
+        case OpRem()   => 20
+        case OpMul()   => 20
+        case OpDiv()   => 20
+    }
+
+    def parseExpression(minPrec: Int): Expression = {
+        var left         = parseFactor()
+        var nextTokenOpt = tokenizer.peek()
+        while nextTokenOpt.isDefined &&
+            Set[Token](OpPlus(), OpMinus(), OpMul(), OpDiv(), OpRem()).contains(nextTokenOpt.get) &&
+            precedence(nextTokenOpt.get) >= minPrec
+        do {
+
+            val opToken = tokenizer.next().get
+            val cPrec   = precedence(opToken)
+
+            val op = opToken match {
+                case OpPlus()  => BinaryOp.Add
+                case OpMinus() => BinaryOp.Subtract
+                case OpMul()   => BinaryOp.Multiply
+                case OpDiv()   => BinaryOp.Divide
+                case OpRem()   => BinaryOp.Remainder
+            }
+
+            val right = parseExpression(cPrec + 1)
+            left = Binary(op, left, right)
+
+            nextTokenOpt = tokenizer.peek()
+        }
+        left
+    }
+
+    def parseFactor(): Expression = {
         tokenizer.next() match {
             case Some(TokIntLit(value)) => Constant(value)
-            case Some(OpTilde())        => Unary(UnaryOp.Complement, parseExpression())
-            case Some(OpMinus())        => Unary(UnaryOp.Negate, parseExpression())
+            case Some(OpTilde())        => Unary(UnaryOp.Complement, parseFactor())
+            case Some(OpMinus())        => Unary(UnaryOp.Negate, parseFactor())
             case Some(LParen()) => {
-                val in = parseExpression()
+                val in = parseExpression(0)
                 expect(RParen())
                 in
             }
-            case _ => throw ParserError("Incomplete Expression.")
+            case _ => throw ParserError("Malformed Factor.")
         }
     }
 

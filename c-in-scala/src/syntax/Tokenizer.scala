@@ -39,6 +39,7 @@ case class OpDeref()       extends Token // .!
 case class OpPlus()        extends Token // +
 case class OpMinus()       extends Token // -
 case class OpMul()         extends Token // *
+case class OpRem()         extends Token // %
 case class OpDiv()         extends Token // /
 case class OpLt()          extends Token // <
 case class OpDoubleEq()    extends Token // ==
@@ -81,6 +82,7 @@ class Tokenizer(input: String) {
       ("\\+".r, _ => OpPlus()),
       ("\\-".r, _ => OpMinus()),
       ("\\*".r, _ => OpMul()),
+      ("\\%".r, _ => OpRem()),
       ("/".r, _ => OpDiv()),
       ("<".r, _ => OpLt()),
       ("\\(".r, _ => LParen()),

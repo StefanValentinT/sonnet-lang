@@ -32,8 +32,10 @@ object App {
             case filename => {
                 val fileContent = FileScanner.readFile(filename)
                 println(s"Compiling $filename:")
-                val ast      = Parser.fromString(fileContent).parse()
-                val tacAst   = TacEmitter(ast).emitProgramTac()
+                val ast = Parser.fromString(fileContent).parse()
+                pprintln(ast)
+                val tacAst = TacEmitter(ast).emitProgramTac()
+                pprintln(tacAst)
                 val asmAst   = codegenProgram(tacAst)
                 val fixedAst = PseudoRegisterReplacer().inProgram(asmAst)
                 pprintln(fixedAst)
