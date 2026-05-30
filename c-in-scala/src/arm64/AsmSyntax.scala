@@ -14,7 +14,12 @@ object Asm {
     case class Ret()                                                             extends Instruction
     case class Binary(op: BinaryOp, src1: Operand, src2: Operand, dest: Operand) extends Instruction
     // dest = src3 - (src1 * src2)
-    case class Msub(src1: Operand, src2: Operand, src3: Operand, dest: Operand) extends Instruction
+    case class MultiplySubtract(src1: Operand, src2: Operand, src3: Operand, dest: Operand) extends Instruction
+    case class Compare(source1: Operand, source2: Operand)                                  extends Instruction
+    case class ConditionalSet(condition: ConditionCode, destination: Operand)               extends Instruction
+    case class ConditionalBranch(condition: ConditionCode, targetLabel: String)             extends Instruction
+    case class Branch(targetLabel: String)                                                  extends Instruction
+    case class Label(name: String)                                                          extends Instruction
 
     abstract sealed class Operand
     case class Imm(value: Int)         extends Operand
@@ -23,7 +28,7 @@ object Asm {
     case class StackSlot(offset: Int)  extends Operand
 
     enum Reg {
-        case W0, W9, W10, W11
+        case W0, W9, W10, W11, WZR
     }
 
     enum UnaryOp {
@@ -31,4 +36,13 @@ object Asm {
     }
 
     enum BinaryOp { case Add, Sub, Mult, Div }
+
+    enum ConditionCode {
+        case Equal,
+            NotEqual,
+            LessThan,
+            LessOrEqual,
+            GreaterThan,
+            GreaterOrEqual
+    }
 }

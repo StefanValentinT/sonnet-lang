@@ -49,8 +49,23 @@ class Emitter() {
             }
             inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
         }
-        case Asm.Msub(s1, s2, s3, d) => {
+        case Asm.MultiplySubtract(s1, s2, s3, d) => {
             sb.append(s"    msub ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}, ${showOp(s3)}")
+        }
+        case Asm.Compare(s1, s2) => {
+            inst(s"cmp ${showOp(s1)}, ${showOp(s2)}")
+        }
+        case Asm.ConditionalSet(condition, destination) => {
+            inst(s"cset ${showOp(destination)}, ${showConditionCode(condition)}")
+        }
+        case Asm.ConditionalBranch(condition, targetLabel) => {
+            inst(s"b.${showConditionCode(condition)} $targetLabel")
+        }
+        case Asm.Branch(targetLabel) => {
+            inst(s"b $targetLabel")
+        }
+        case Asm.Label(name) => {
+            sb.append(s"$name:")
         }
     }
 
@@ -61,6 +76,16 @@ class Emitter() {
         case Asm.Register(Asm.Reg.W9)  => "w9"
         case Asm.Register(Asm.Reg.W10) => "w10"
         case Asm.Register(Asm.Reg.W11) => "w11"
+        case Asm.Register(Asm.Reg.WZR) => "wzr"
         case _                         => throw new RuntimeException("Unexpected operand type")
+    }
+
+    private def showConditionCode(cc: Asm.ConditionCode): String = cc match {
+        case Asm.ConditionCode.Equal          => "eq"
+        case Asm.ConditionCode.NotEqual       => "ne"
+        case Asm.ConditionCode.LessThan       => "lt"
+        case Asm.ConditionCode.LessOrEqual    => "le"
+        case Asm.ConditionCode.GreaterThan    => "gt"
+        case Asm.ConditionCode.GreaterOrEqual => "ge"
     }
 }

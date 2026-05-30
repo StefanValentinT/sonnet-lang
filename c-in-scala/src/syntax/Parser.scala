@@ -37,18 +37,26 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def precedence(t: Token): Int = t match {
-        case OpPlus()  => 10
-        case OpMinus() => 10
-        case OpRem()   => 20
-        case OpMul()   => 20
-        case OpDiv()   => 20
+        case OpOr()             => 30
+        case OpAnd()            => 40
+        case OpEqual()          => 50
+        case OpNotEqual()       => 50
+        case OpLessThan()       => 60
+        case OpGreaterThan()    => 60
+        case OpLessOrEqual()    => 60
+        case OpGreaterOrEqual() => 60
+        case OpPlus()           => 70
+        case OpMinus()          => 70
+        case OpRem()            => 80
+        case OpMul()            => 80
+        case OpDiv()            => 80
     }
 
     def parseExpression(minPrec: Int): Expression = {
         var left         = parseFactor()
         var nextTokenOpt = tokenizer.peek()
         while nextTokenOpt.isDefined &&
-            Set[Token](OpPlus(), OpMinus(), OpMul(), OpDiv(), OpRem()).contains(nextTokenOpt.get) &&
+            Set[Token](OpPlus(), OpMinus(), OpMul(), OpDiv(), OpRem(), OpAnd(), OpOr(), OpEqual(), OpNotEqual(), OpGreaterThan(), OpLessThan(), OpLessOrEqual(), OpGreaterOrEqual()).contains(nextTokenOpt.get) &&
             precedence(nextTokenOpt.get) >= minPrec
         do {
 
@@ -61,6 +69,15 @@ class Parser(tokenizer: Tokenizer) {
                 case OpMul()   => BinaryOp.Multiply
                 case OpDiv()   => BinaryOp.Divide
                 case OpRem()   => BinaryOp.Remainder
+
+                case OpOr()             => BinaryOp.Or
+                case OpAnd()            => BinaryOp.And
+                case OpEqual()          => BinaryOp.Equal
+                case OpNotEqual()       => BinaryOp.NotEqual
+                case OpLessThan()       => BinaryOp.LessThan
+                case OpGreaterThan()    => BinaryOp.GreaterThan
+                case OpLessOrEqual()    => BinaryOp.LessOrEqual
+                case OpGreaterOrEqual() => BinaryOp.GreaterOrEqual
             }
 
             val right = parseExpression(cPrec + 1)
@@ -76,6 +93,7 @@ class Parser(tokenizer: Tokenizer) {
             case Some(TokIntLit(value)) => Constant(value)
             case Some(OpTilde())        => Unary(UnaryOp.Complement, parseFactor())
             case Some(OpMinus())        => Unary(UnaryOp.Negate, parseFactor())
+            case Some(OpNot())          => Unary(UnaryOp.Not, parseFactor())
             case Some(LParen()) => {
                 val in = parseExpression(0)
                 expect(RParen())

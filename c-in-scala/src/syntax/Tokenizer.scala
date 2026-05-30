@@ -24,25 +24,31 @@ case class RBracket() extends Token
 case class LBrace()   extends Token
 case class RBrace()   extends Token
 
-case class OpArrow()       extends Token // ->
-case class OpEq()          extends Token // =
-case class OpColon()       extends Token // :
-case class OpComma()       extends Token // ,
-case class OpSemicolon()   extends Token // ,
-case class OpPipe()        extends Token // |
-case class OpAmp()         extends Token // &
-case class OpTilde()       extends Token // ~
-case class OpDot()         extends Token // .
-case class OpDoubleColon() extends Token // ::
-case class OpRef()         extends Token // .*
-case class OpDeref()       extends Token // .!
-case class OpPlus()        extends Token // +
-case class OpMinus()       extends Token // -
-case class OpMul()         extends Token // *
-case class OpRem()         extends Token // %
-case class OpDiv()         extends Token // /
-case class OpLt()          extends Token // <
-case class OpDoubleEq()    extends Token // ==
+case class OpArrow()          extends Token // ->
+case class OpNot()            extends Token // !
+case class OpEqual()          extends Token // =
+case class OpLessThan()       extends Token // <
+case class OpGreaterThan()    extends Token // >
+case class OpNotEqual()       extends Token // !=
+case class OpGreaterOrEqual() extends Token // >=
+case class OpLessOrEqual()    extends Token // <=
+case class OpColon()          extends Token // :
+case class OpComma()          extends Token // ,
+case class OpSemicolon()      extends Token // ,
+case class OpOr()             extends Token // |
+case class OpAnd()            extends Token // &
+case class OpTilde()          extends Token // ~
+case class OpDot()            extends Token // .
+case class OpDoubleColon()    extends Token // ::
+case class OpRef()            extends Token // .*
+case class OpDeref()          extends Token // .!
+case class OpPlus()           extends Token // +
+case class OpMinus()          extends Token // -
+case class OpMul()            extends Token // *
+case class OpRem()            extends Token // %
+case class OpDiv()            extends Token // /
+case class OpLt()             extends Token // <
+case class OpDoubleEq()       extends Token // ==
 
 case class TokIdent(value: String)     extends Token
 case class TokIntLit(value: Int)       extends Token
@@ -69,14 +75,20 @@ class Tokenizer(input: String) {
       ("->".r, _ => OpArrow()),
       ("\\.\\*".r, _ => OpRef()),
       ("\\.\\!".r, _ => OpDeref()),
+      ("\\!".r, _ => OpNot()),
       ("::".r, _ => OpDoubleColon()),
-      ("==".r, _ => OpDoubleEq()),
-      ("=".r, _ => OpEq()),
+      (">=".r, _ => OpGreaterOrEqual()),
+      ("<=".r, _ => OpLessOrEqual()),
+      ("!=".r, _ => OpNotEqual()),
+      ("<".r, _ => OpLessThan()),
+      (">".r, _ => OpGreaterThan()),
+      ("!=".r, _ => OpNotEqual()),
+      ("=".r, _ => OpEqual()),
       (":".r, _ => OpColon()),
       (",".r, _ => OpComma()),
       (";".r, _ => OpSemicolon()),
-      ("\\|".r, _ => OpPipe()),
-      ("&".r, _ => OpAmp()),
+      ("\\|".r, _ => OpOr()),
+      ("&".r, _ => OpAnd()),
       ("~".r, _ => OpTilde()),
       ("\\.".r, _ => OpDot()),
       ("\\+".r, _ => OpPlus()),

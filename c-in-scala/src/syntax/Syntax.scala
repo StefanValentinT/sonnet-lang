@@ -15,9 +15,10 @@ case class Unary(op: UnaryOp, exp: Expression)                      extends Expr
 case class Binary(op: BinaryOp, exp1: Expression, exp2: Expression) extends Expression
 
 enum UnaryOp {
-    case Complement, Negate
+    case Complement, Negate, Not
 }
 
 enum BinaryOp {
-    case Add, Subtract, Multiply, Divide, Remainder
+    case Add, Subtract, Multiply, Divide, Remainder,
+        And, Or, Equal, NotEqual, LessThan, LessOrEqual, GreaterThan, GreaterOrEqual
 }
