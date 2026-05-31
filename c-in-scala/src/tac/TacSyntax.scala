@@ -29,7 +29,8 @@ object Tac {
     enum BinaryOp {
         case Add, Subtract, Multiply, Divide, Remainder,
             And, Or, Equal, NotEqual, LessThan, LessOrEqual,
-            GreaterThan, GreaterOrEqual
+            GreaterThan, GreaterOrEqual,
+            BitAnd, BitOr, BitXor, LShift, RShift
     }
 
 }
@@ -57,24 +58,44 @@ class TacEmitter(prog: Program) {
     }
 
     private def convertBinOp(op: BinaryOp): Tac.BinaryOp = op match {
-        case BinaryOp.Add       => Tac.BinaryOp.Add
-        case BinaryOp.Subtract  => Tac.BinaryOp.Subtract
-        case BinaryOp.Multiply  => Tac.BinaryOp.Multiply
-        case BinaryOp.Divide    => Tac.BinaryOp.Divide
-        case BinaryOp.Remainder => Tac.BinaryOp.Remainder
-        // case BinaryOp.And            => Tac.BinaryOp.And
-        // case BinaryOp.Or             => Tac.BinaryOp.Or
+        case BinaryOp.Add            => Tac.BinaryOp.Add
+        case BinaryOp.Subtract       => Tac.BinaryOp.Subtract
+        case BinaryOp.Multiply       => Tac.BinaryOp.Multiply
+        case BinaryOp.Divide         => Tac.BinaryOp.Divide
+        case BinaryOp.Remainder      => Tac.BinaryOp.Remainder
         case BinaryOp.Equal          => Tac.BinaryOp.Equal
         case BinaryOp.NotEqual       => Tac.BinaryOp.NotEqual
         case BinaryOp.GreaterThan    => Tac.BinaryOp.GreaterThan
         case BinaryOp.LessThan       => Tac.BinaryOp.LessThan
         case BinaryOp.GreaterOrEqual => Tac.BinaryOp.GreaterOrEqual
         case BinaryOp.LessOrEqual    => Tac.BinaryOp.LessOrEqual
+        case BinaryOp.BitAnd         => Tac.BinaryOp.BitAnd
+        case BinaryOp.BitOr          => Tac.BinaryOp.BitOr
+        case BinaryOp.BitXor         => Tac.BinaryOp.BitXor
+        case BinaryOp.LShift         => Tac.BinaryOp.LShift
+        case BinaryOp.RShift         => Tac.BinaryOp.RShift
     }
 
     def emitExpressionTac(e: Expression): Tac.Val = e match {
         case Constant(value) =>
             Tac.Constant(value)
+        case Var(value) =>
+            Tac.Var(value)
+        case Assignment(Var(v), rhs) => {
+            val res = emitExpressionTac(rhs)
+            instructions += Tac.Copy(res, Tac.Var(v))
+            Tac.Var(v)
+        }
+        case Declaration(Var(name), initializerOpt) =>
+            initializerOpt match {
+                case Some(initExpr) =>
+                    val res = emitExpressionTac(initExpr)
+                    instructions += Tac.Copy(res, Tac.Var(name))
+                    Tac.Var(name)
+
+                case None =>
+                    Tac.Constant(0)
+            }
 
         case Unary(op, exp) => {
             val srcVal  = emitExpressionTac(exp)
@@ -130,13 +151,16 @@ class TacEmitter(prog: Program) {
             val resultVal = emitExpressionTac(exp)
             instructions += Tac.Return(resultVal)
         }
+        case ExpressionStmt(exp) => {
+            emitExpressionTac(exp)
+        }
     }
 
     def emitProgramTac(): Tac.Program = {
         val funcDef = prog.items
         instructions.clear()
 
-        emitStatementTac(funcDef.body)
+        funcDef.body.foreach(emitStatementTac)
 
         Tac.Program(Tac.FunctionDef(funcDef.name, instructions.toList))
     }

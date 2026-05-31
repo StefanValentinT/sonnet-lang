@@ -42,10 +42,15 @@ class Emitter() {
         }
         case Asm.Binary(op, s1, s2, d) => {
             val mnemonic = op match {
-                case Asm.BinaryOp.Add  => "add"
-                case Asm.BinaryOp.Sub  => "sub"
-                case Asm.BinaryOp.Mult => "mul"
-                case Asm.BinaryOp.Div  => "sdiv"
+                case Asm.BinaryOp.Add    => "add"
+                case Asm.BinaryOp.Sub    => "sub"
+                case Asm.BinaryOp.Mult   => "mul"
+                case Asm.BinaryOp.Div    => "sdiv"
+                case Asm.BinaryOp.BitAnd => "and"
+                case Asm.BinaryOp.BitOr  => "orr"
+                case Asm.BinaryOp.BitXor => "eor"
+                case Asm.BinaryOp.Lsl    => "lsl"
+                case Asm.BinaryOp.Asr    => "asr"
             }
             inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
         }

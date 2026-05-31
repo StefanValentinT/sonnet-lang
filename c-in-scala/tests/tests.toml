@@ -3,3 +3,9 @@ file = "first.c"
 expect = " "
 return = 1
 skip = true
+
+[logical left shift]
+file = "lshift.lang"
+expect = ""
+return = 1
+skip = true

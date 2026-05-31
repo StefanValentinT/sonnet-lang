@@ -6,6 +6,7 @@ import pprint.pprintln
 import codegen.*
 import arm64.*
 import tac.*
+import episteme.*
 
 open class CompilerError(who: String, detail: String = null)
     extends RuntimeException({
@@ -34,12 +35,14 @@ object App {
                 println(s"Compiling $filename:")
                 val ast = Parser.fromString(fileContent).parse()
                 pprintln(ast)
+                val fixedAst = VariableResolver.resolveProgram(ast)
+                pprintln(fixedAst)
                 val tacAst = TacEmitter(ast).emitProgramTac()
                 pprintln(tacAst)
-                val asmAst   = codegenProgram(tacAst)
-                val fixedAst = PseudoRegisterReplacer().inProgram(asmAst)
-                pprintln(fixedAst)
-                val asmString = Emitter().emitProgram(fixedAst)
+                var asmAst = codegenProgram(tacAst)
+                asmAst = PseudoRegisterReplacer().inProgram(asmAst)
+                pprintln(asmAst)
+                val asmString = Emitter().emitProgram(asmAst)
                 println(asmString)
                 FileWriter.writeFile(filename, asmString)
             }

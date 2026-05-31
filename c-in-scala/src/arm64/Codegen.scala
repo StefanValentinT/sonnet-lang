@@ -107,6 +107,11 @@ private def convertBinOp(op: Tac.BinaryOp): Asm.BinaryOp = op match {
     case Tac.BinaryOp.Subtract => Asm.BinaryOp.Sub
     case Tac.BinaryOp.Multiply => Asm.BinaryOp.Mult
     case Tac.BinaryOp.Divide   => Asm.BinaryOp.Div
+    case Tac.BinaryOp.BitAnd   => Asm.BinaryOp.BitAnd
+    case Tac.BinaryOp.BitOr    => Asm.BinaryOp.BitOr
+    case Tac.BinaryOp.BitXor   => Asm.BinaryOp.BitXor
+    case Tac.BinaryOp.LShift   => Asm.BinaryOp.Lsl
+    case Tac.BinaryOp.RShift   => Asm.BinaryOp.Asr
     case _                     => throw new RuntimeException(s"Operation $op cannot be mapped directly to simple BinaryOp")
 }
 

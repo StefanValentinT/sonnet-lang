@@ -35,7 +35,7 @@ object Asm {
         case Neg, Not
     }
 
-    enum BinaryOp { case Add, Sub, Mult, Div }
+    enum BinaryOp { case Add, Sub, Mult, Div, BitAnd, BitOr, BitXor, Lsl, Asr }
 
     enum ConditionCode {
         case Equal,

@@ -1,15 +1,29 @@
+/*
+// use pnly when compiling for native exec using `mill nativeLink`
 package build
 import mill._, scalalib._, scalanativelib._
 
 object `package` extends ScalaNativeModule {
-
-    // 3.3.5 is heavily supported by Scala Native 0.5.x
-    def scalaVersion = "3.3.5"
-    
+    def scalaVersion = "3.3.5" 
     def scalaNativeVersion = "0.5.8"
-
     def mvnDeps = Seq(
       mvn"com.lihaoyi::pprint::0.9.6"
+    )
+    override def sources = Task.Sources {
+        moduleDir / "src"
+    }
+}
+*/
+
+package build
+import mill._, scalalib._
+
+object `package` extends ScalaModule {
+
+    def scalaVersion = "3.8.3"
+
+    def mvnDeps = Seq(
+      mvn"com.lihaoyi::pprint:0.9.6",
     )
 
     override def sources = Task.Sources {

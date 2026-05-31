@@ -15,7 +15,7 @@ case class KwIf()     extends Token
 case class KwThen()   extends Token
 case class KwElse()   extends Token
 case class KwVoid()   extends Token
-case class KwInt()    extends Token
+case class KwI32()    extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -25,8 +25,9 @@ case class LBrace()   extends Token
 case class RBrace()   extends Token
 
 case class OpArrow()          extends Token // ->
+case class OpAssign()         extends Token // =
 case class OpNot()            extends Token // !
-case class OpEqual()          extends Token // =
+case class OpEqual()          extends Token // ==
 case class OpLessThan()       extends Token // <
 case class OpGreaterThan()    extends Token // >
 case class OpNotEqual()       extends Token // !=
@@ -34,9 +35,14 @@ case class OpGreaterOrEqual() extends Token // >=
 case class OpLessOrEqual()    extends Token // <=
 case class OpColon()          extends Token // :
 case class OpComma()          extends Token // ,
-case class OpSemicolon()      extends Token // ,
+case class OpSemicolon()      extends Token // ;
 case class OpOr()             extends Token // |
 case class OpAnd()            extends Token // &
+case class OpBitAnd()         extends Token // &&
+case class OpBitOr()          extends Token // ||
+case class OpBitXor()         extends Token // ^
+case class OpLShift()         extends Token // <<
+case class OpRShift()         extends Token // >>
 case class OpTilde()          extends Token // ~
 case class OpDot()            extends Token // .
 case class OpDoubleColon()    extends Token // ::
@@ -48,7 +54,19 @@ case class OpMul()            extends Token // *
 case class OpRem()            extends Token // %
 case class OpDiv()            extends Token // /
 case class OpLt()             extends Token // <
-case class OpDoubleEq()       extends Token // ==
+
+case class OpAddAssign()    extends Token // +=
+case class OpSubAssign()    extends Token // -=
+case class OpMulAssign()    extends Token // *=
+case class OpDivAssign()    extends Token // /=
+case class OpRemAssign()    extends Token // %=
+case class OpAndAssign()    extends Token // &=
+case class OpOrAssign()     extends Token // |=
+case class OpBitAndAssign() extends Token // &&=
+case class OpBitOrAssign()  extends Token // ||=
+case class OpBitXorAssign() extends Token // ^=
+case class OpLShiftAssign() extends Token // <<=
+case class OpRShiftAssign() extends Token // >>=
 
 case class TokIdent(value: String)     extends Token
 case class TokIntLit(value: Int)       extends Token
@@ -56,60 +74,85 @@ case class TokStringLit(value: String) extends Token
 
 class TokenizerError(detail: String) extends CompilerError("Tokenizer", detail)
 
+sealed trait MatchPattern
+case class Lit(str: String)     extends MatchPattern
+case class Word(str: String)    extends MatchPattern
+case class RegexPat(re: String) extends MatchPattern
+
 class Tokenizer(input: String) {
     private val len = input.length
 
     private var idx                             = 0
     private var precomputedToken: Option[Token] = None
 
-    val tokenPatterns: List[(Regex, String => Token)] = List(
-      ("\\bfor\\b".r, _ => KwFor()),
-      ("\\bval\\b".r, _ => KwVal()),
-      ("\\bvar\\b".r, _ => KwVar()),
-      ("\\breturn\\b".r, _ => KwReturn()),
-      ("\\bif\\b".r, _ => KwIf()),
-      ("\\bthen\\b".r, _ => KwThen()),
-      ("\\belse\\b".r, _ => KwElse()),
-      ("\\bvoid\\b".r, _ => KwVoid()),
-      ("\\bint\\b".r, _ => KwInt()),
-      ("->".r, _ => OpArrow()),
-      ("\\.\\*".r, _ => OpRef()),
-      ("\\.\\!".r, _ => OpDeref()),
-      ("\\!".r, _ => OpNot()),
-      ("::".r, _ => OpDoubleColon()),
-      (">=".r, _ => OpGreaterOrEqual()),
-      ("<=".r, _ => OpLessOrEqual()),
-      ("!=".r, _ => OpNotEqual()),
-      ("<".r, _ => OpLessThan()),
-      (">".r, _ => OpGreaterThan()),
-      ("!=".r, _ => OpNotEqual()),
-      ("=".r, _ => OpEqual()),
-      (":".r, _ => OpColon()),
-      (",".r, _ => OpComma()),
-      (";".r, _ => OpSemicolon()),
-      ("\\|".r, _ => OpOr()),
-      ("&".r, _ => OpAnd()),
-      ("~".r, _ => OpTilde()),
-      ("\\.".r, _ => OpDot()),
-      ("\\+".r, _ => OpPlus()),
-      ("\\-".r, _ => OpMinus()),
-      ("\\*".r, _ => OpMul()),
-      ("\\%".r, _ => OpRem()),
-      ("/".r, _ => OpDiv()),
-      ("<".r, _ => OpLt()),
-      ("\\(".r, _ => LParen()),
-      ("\\)".r, _ => RParen()),
-      ("\\[".r, _ => LBracket()),
-      ("\\]".r, _ => RBracket()),
-      ("\\{".r, _ => LBrace()),
-      ("\\}".r, _ => RBrace()),
-      (
-        "\\d+".r,
-        s => TokIntLit(s.toInt)
-      ),
-      ("\"[^\"]*\"".r, s => TokStringLit(s.substring(1, s.length - 1))),
-      ("\\b[a-zA-Z_]\\w*\\b".r, s => TokIdent(s))
+    private val rawPatterns: List[(MatchPattern, String => Token)] = List(
+      (Word("for"), _ => KwFor()),
+      (Word("val"), _ => KwVal()),
+      (Word("var"), _ => KwVar()),
+      (Word("return"), _ => KwReturn()),
+      (Word("if"), _ => KwIf()),
+      (Word("then"), _ => KwThen()),
+      (Word("else"), _ => KwElse()),
+      (Word("void"), _ => KwVoid()),
+      (Word("i32"), _ => KwI32()),
+      (Lit("<<="), _ => OpLShiftAssign()),
+      (Lit(">>="), _ => OpRShiftAssign()),
+      (Lit("&&="), _ => OpBitAndAssign()),
+      (Lit("||="), _ => OpBitOrAssign()),
+      (Lit("+="), _ => OpAddAssign()),
+      (Lit("-="), _ => OpSubAssign()),
+      (Lit("*="), _ => OpMulAssign()),
+      (Lit("/="), _ => OpDivAssign()),
+      (Lit("%="), _ => OpRemAssign()),
+      (Lit("&="), _ => OpAndAssign()),
+      (Lit("|="), _ => OpOrAssign()),
+      (Lit("^="), _ => OpBitXorAssign()),
+      (Lit("->"), _ => OpArrow()),
+      (Lit(".*"), _ => OpRef()),
+      (Lit(".!"), _ => OpDeref()),
+      (Lit("::"), _ => OpDoubleColon()),
+      (Lit(">="), _ => OpGreaterOrEqual()),
+      (Lit("<="), _ => OpLessOrEqual()),
+      (Lit("!="), _ => OpNotEqual()),
+      (Lit("=="), _ => OpEqual()),
+      (Lit("<<"), _ => OpLShift()),
+      (Lit(">>"), _ => OpRShift()),
+      (Lit("&&"), _ => OpBitAnd()),
+      (Lit("||"), _ => OpBitOr()),
+      (Lit("^"), _ => OpBitXor()),
+      (Lit("<"), _ => OpLessThan()),
+      (Lit(">"), _ => OpGreaterThan()),
+      (Lit("="), _ => OpAssign()),
+      (Lit(":"), _ => OpColon()),
+      (Lit(","), _ => OpComma()),
+      (Lit(";"), _ => OpSemicolon()),
+      (Lit("|"), _ => OpOr()),
+      (Lit("&"), _ => OpAnd()),
+      (Lit("~"), _ => OpTilde()),
+      (Lit("."), _ => OpDot()),
+      (Lit("+"), _ => OpPlus()),
+      (Lit("-"), _ => OpMinus()),
+      (Lit("*"), _ => OpMul()),
+      (Lit("%"), _ => OpRem()),
+      (Lit("/"), _ => OpDiv()),
+      (Lit("("), _ => LParen()),
+      (Lit(")"), _ => RParen()),
+      (Lit("["), _ => LBracket()),
+      (Lit("]"), _ => RBracket()),
+      (Lit("{"), _ => LBrace()),
+      (Lit("}"), _ => RBrace()),
+      (RegexPat("\\d+"), s => TokIntLit(s.toInt)),
+      (RegexPat("\"[^\"]*\""), s => TokStringLit(s.substring(1, s.length - 1))),
+      (RegexPat("[a-zA-Z_]\\w*"), s => TokIdent(s))
     )
+    val tokenPatterns: List[(Regex, String => Token)] = rawPatterns.map {
+        case (Lit(str), builder) =>
+            (Regex.quote(str).r, builder)
+        case (Word(str), builder) =>
+            (s"\\b${Regex.quote(str)}\\b".r, builder)
+        case (RegexPat(re), builder) =>
+            (re.r, builder)
+    }
 
     def peek(): Option[Token] = {
         if (precomputedToken.isDefined) {
