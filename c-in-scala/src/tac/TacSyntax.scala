@@ -86,17 +86,6 @@ class TacEmitter(prog: Program) {
             instructions += Tac.Copy(res, Tac.Var(v))
             Tac.Var(v)
         }
-        case Declaration(Var(name), initializerOpt) =>
-            initializerOpt match {
-                case Some(initExpr) =>
-                    val res = emitExpressionTac(initExpr)
-                    instructions += Tac.Copy(res, Tac.Var(name))
-                    Tac.Var(name)
-
-                case None =>
-                    Tac.Constant(0)
-            }
-
         case Unary(op, exp) => {
             val srcVal  = emitExpressionTac(exp)
             val destVar = newTemp()
@@ -154,6 +143,13 @@ class TacEmitter(prog: Program) {
         case ExpressionStmt(exp) => {
             emitExpressionTac(exp)
         }
+        case Declaration(Var(name), initializerOpt) =>
+            initializerOpt match {
+                case Some(initExpr) =>
+                    val res = emitExpressionTac(initExpr)
+                    instructions += Tac.Copy(res, Tac.Var(name))
+                case None =>
+            }
     }
 
     def emitProgramTac(): Tac.Program = {

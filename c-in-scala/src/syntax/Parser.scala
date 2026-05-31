@@ -40,6 +40,25 @@ class Parser(tokenizer: Tokenizer) {
                 expect(OpSemicolon())
                 Return(rv)
             }
+            case KwVar() => {
+                tokenizer.consume()
+                val name = expect[TokIdent].value
+                expect(OpColon())
+                expect(KwI32())
+
+                val decl = tokenizer.peek() match {
+                    case Some(OpAssign()) => {
+                        tokenizer.consume()
+                        val init = parseExpression(0)
+                        Declaration(Var(name), Some(init))
+                    }
+                    case _ => {
+                        Declaration(Var(name), None)
+                    }
+                }
+                expect(OpSemicolon())
+                decl
+            }
             case _ => {
                 val e = ExpressionStmt(parseExpression(0))
                 expect(OpSemicolon())
@@ -84,6 +103,7 @@ class Parser(tokenizer: Tokenizer) {
             val cPrec   = precedence(opToken)
 
             if (cPrec == 10) { // it is an assignment
+            	// right-assoicative meaning a = b = c is possible
                 val right = parseExpression(cPrec)
 
                 if (opToken == OpAssign()) {
@@ -138,36 +158,18 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def parseFactor(): Expression = {
-        tokenizer.peek() match {
-            case Some(KwVar()) => {
-                tokenizer.consume()
-                val name = expect[TokIdent].value
-                expect(OpColon())
-                expect(KwI32())
-
-                tokenizer.peek() match {
-                    case Some(OpAssign()) =>
-                        tokenizer.consume()
-                        val init = parseExpression(0)
-                        Declaration(Var(name), Some(init))
-                    case _ =>
-                        Declaration(Var(name), None)
-                }
+        tokenizer.next() match {
+            case Some(TokIntLit(value)) => Constant(value)
+            case Some(TokIdent(value))  => Var(value)
+            case Some(OpTilde())        => Unary(UnaryOp.Complement, parseFactor())
+            case Some(OpMinus())        => Unary(UnaryOp.Negate, parseFactor())
+            case Some(OpNot())          => Unary(UnaryOp.Not, parseFactor())
+            case Some(LParen()) => {
+                val in = parseExpression(0)
+                expect(RParen())
+                in
             }
-            case _ =>
-                tokenizer.next() match {
-                    case Some(TokIntLit(value)) => Constant(value)
-                    case Some(TokIdent(value))  => Var(value)
-                    case Some(OpTilde())        => Unary(UnaryOp.Complement, parseFactor())
-                    case Some(OpMinus())        => Unary(UnaryOp.Negate, parseFactor())
-                    case Some(OpNot())          => Unary(UnaryOp.Not, parseFactor())
-                    case Some(LParen()) => {
-                        val in = parseExpression(0)
-                        expect(RParen())
-                        in
-                    }
-                    case _ => throw ParserError("Malformed Factor.")
-                }
+            case other => throw ParserError(s"Malformed Factor. Found unexpected token: $other")
         }
     }
 

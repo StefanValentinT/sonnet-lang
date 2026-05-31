@@ -27,14 +27,6 @@ object VariableResolver {
         stmt match {
             case Return(exp)         => Return(resolveExpression(exp))
             case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp))
-        }
-    }
-
-    def resolveExpression(exp: Expression): Expression = {
-        exp match {
-            case Constant(value)        => Constant(value)
-            case Unary(op, e)           => Unary(op, resolveExpression(e))
-            case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1), resolveExpression(exp2))
             case Declaration(vNode, init) => {
                 val name = vNode.name
                 if (variableMap.contains(name)) {
@@ -46,6 +38,14 @@ object VariableResolver {
                 val resolvedInit = init.map(resolveExpression)
                 Declaration(Var(uniqueName), resolvedInit)
             }
+        }
+    }
+
+    def resolveExpression(exp: Expression): Expression = {
+        exp match {
+            case Constant(value)        => Constant(value)
+            case Unary(op, e)           => Unary(op, resolveExpression(e))
+            case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1), resolveExpression(exp2))
             case Var(value) => {
                 variableMap.get(value) match {
                     case Some(uniqueName) => Var(uniqueName)
