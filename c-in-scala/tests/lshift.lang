@@ -1,6 +1,6 @@
-i32 main(void){
+fun main() i32{
 	var x : i32 = 5;
 	x = 3;
 	var y : i32 = 2;
-	return x<<y;
+	x<<y
 }

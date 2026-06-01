@@ -1,11 +1,14 @@
 [return one]
-file = "first.c"
-expect = " "
+file = "first.lang"
+expect = ""
 return = 1
-skip = true
 
 [logical left shift]
 file = "lshift.lang"
 expect = ""
-return = 1
-skip = true
+return = 12
+
+[nth highly composite number]
+file = "highly-composite.lang"
+expect = ""
+return = 120

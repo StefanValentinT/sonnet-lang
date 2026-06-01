@@ -1,34 +1,3 @@
-# Program
 
-# Finding the nth highly composite number
-# one that has more divisors than any other number before
-fun main() i32 {
-	var n: i32 = 5;
+x : (i32, i32) -> i32
 
-    var current_candidate: i32 = 1;
-    var max_divisors: i32 = 0;
-    var hcn_count: i32 = 0;
-    var target_hcn: i32 = 0;
-
-    while hcn_count < n do {
-        var divisors: i32 = 0;
-        var i: i32 = 1;
-
-        while i <= current_candidate do {
-            if current_candidate % i == 0 then {
-                divisors += 1;
-            } else 0;
-            i += 1;
-        };
-
-        if divisors > max_divisors then {
-            max_divisors = divisors;
-            hcn_count += 1;
-            target_hcn = current_candidate;
-        } else 0;
-
-        current_candidate += 1;
-    };
-
-    return target_hcn;
-}
