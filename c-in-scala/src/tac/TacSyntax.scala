@@ -172,6 +172,27 @@ class TacEmitter(prog: Program) {
             dest
         }
 
+        case While(cond, body, label) => {
+            val breakLabel    = Tac.Label(s"break_$label")
+            val continueLabel = Tac.Label(s"continue_$label")
+            instructions += continueLabel
+            val v = emitExpressionTac(cond)
+            instructions += Tac.JumpIfZero(v, breakLabel)
+            val b = emitExpressionTac(body)
+            instructions += Tac.Jump(continueLabel)
+            instructions += breakLabel
+            Tac.Constant(0)
+        }
+
+        case Break(label) => {
+            instructions += Tac.Jump(Tac.Label(s"break_$label"))
+            Tac.Constant(0)
+        }
+        case Continue(label) => {
+            instructions += Tac.Jump(Tac.Label(s"continue_$label"))
+            Tac.Constant(0)
+        }
+
     }
 
     def emitStatementTac(s: Statement): Unit = s match {

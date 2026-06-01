@@ -50,6 +50,9 @@ object VariableResolver {
                 val resolvedExp   = if exp.isDefined then Some(resolveExpression(exp.get, innerMap)) else None
                 Block(resolvedStmts, resolvedExp)
             }
+            case e @ Continue(_)        => e
+            case e @ Break(_)           => e
+            case While(cond, exp, l)    => While(resolveExpression(cond, variableMap), resolveExpression(exp, variableMap), l)
             case If(cond, thenB, elseB) => If(resolveExpression(cond, variableMap), resolveExpression(thenB, variableMap), if elseB.isDefined then Some(resolveExpression(elseB.get, variableMap)) else None)
             case Constant(value)        => Constant(value)
             case Unary(op, e)           => Unary(op, resolveExpression(e, variableMap))

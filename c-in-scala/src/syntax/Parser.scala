@@ -32,23 +32,37 @@ class Parser(tokenizer: Tokenizer) {
         var finalExpr: Option[Expression] = None
 
         while (tokenizer.peek() != Some(RBrace())) {
-            if (tokenizer.peek() == Some(KwVar())) {
-                stmts += parseDeclaration()
-                expect(OpSemicolon())
-            } else {
-                val expr = parseExpression(0)
-                if (tokenizer.peek() == Some(OpSemicolon())) {
-                    tokenizer.consume()
-                    stmts += ExpressionStmt(expr)
-                } else if (tokenizer.peek() == Some(RBrace())) {
-                    finalExpr = Some(expr)
-                } else {
-                    throw ParserError("Statements must be separated by semicolons.")
+            val stmt = parseStatement()
+            stmt match {
+                case ExpressionStmt(expr) =>
+                    if (tokenizer.peek() == Some(RBrace())) {
+                        finalExpr = Some(expr)
+                    } else {
+                        expect(OpSemicolon())
+                        stmts += stmt
+                    }
+                case nonExprStmt => {
+                    stmts += nonExprStmt
+                    expect(OpSemicolon())
                 }
             }
         }
         expect(RBrace())
         Block(stmts.toList, finalExpr)
+    }
+
+    def parseStatement(): Statement = {
+        tokenizer.peek() match {
+            case Some(KwVar()) =>
+                parseDeclaration()
+
+            case Some(_) =>
+                val expr = parseExpression(0)
+                ExpressionStmt(expr)
+
+            case None =>
+                throw ParserError("Expected a statement but reached end of tokenstream.")
+        }
     }
 
     def parseDeclaration(): Declaration = {
@@ -183,6 +197,17 @@ class Parser(tokenizer: Tokenizer) {
                 val rv = parseExpression(0)
                 Return(rv)
             }
+            case Some(KwWhile()) => {
+                val cond = parseExpression(0)
+                expect(KwDo())
+                val body = parseExpression(0)
+                While(cond, body, "")
+            }
+            case Some(KwBreak()) =>
+                Break("")
+
+            case Some(KwContinue()) =>
+                Continue("")
             case Some(TokIdent(value)) => Var(value)
             case Some(OpTilde())       => Unary(UnaryOp.Complement, parseFactor())
             case Some(OpMinus())       => Unary(UnaryOp.Negate, parseFactor())

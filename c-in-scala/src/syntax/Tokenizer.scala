@@ -7,15 +7,19 @@ import pprint.pprintln
 
 class Token
 
-case class KwFor()    extends Token
-case class KwVal()    extends Token
-case class KwVar()    extends Token
-case class KwReturn() extends Token
-case class KwIf()     extends Token
-case class KwThen()   extends Token
-case class KwElse()   extends Token
-case class KwFun()    extends Token
-case class KwI32()    extends Token
+case class KwFor()      extends Token
+case class KwVal()      extends Token
+case class KwVar()      extends Token
+case class KwReturn()   extends Token
+case class KwIf()       extends Token
+case class KwThen()     extends Token
+case class KwElse()     extends Token
+case class KwFun()      extends Token
+case class KwWhile()    extends Token
+case class KwBreak()    extends Token
+case class KwContinue() extends Token
+case class KwDo()       extends Token
+case class KwI32()      extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -94,6 +98,10 @@ class Tokenizer(input: String) {
       (Word("then"), _ => KwThen()),
       (Word("else"), _ => KwElse()),
       (Word("fun"), _ => KwFun()),
+      (Word("while"), _ => KwWhile()),
+      (Word("break"), _ => KwBreak()),
+      (Word("continue"), _ => KwContinue()),
+      (Word("do"), _ => KwDo()),
       (Word("i32"), _ => KwI32()),
       (Lit("<<="), _ => OpLShiftAssign()),
       (Lit(">>="), _ => OpRShiftAssign()),
