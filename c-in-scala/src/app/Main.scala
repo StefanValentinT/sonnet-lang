@@ -3,7 +3,6 @@ package app
 import io.{FileScanner, FileWriter}
 import syntax.*
 import pprint.pprintln
-import codegen.*
 import arm64.*
 import tac.*
 import episteme.*

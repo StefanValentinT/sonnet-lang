@@ -2,6 +2,7 @@ package tac
 
 import syntax.*
 import scala.collection.mutable.ListBuffer
+import tac.Tac.JumpIfZero
 
 object Tac {
     case class Program(items: FunctionDef)
@@ -86,6 +87,40 @@ class TacEmitter(prog: Program) {
             instructions += Tac.Copy(res, Tac.Var(v))
             Tac.Var(v)
         }
+        case If(cond, thenB, None) => {
+            val c         = emitExpressionTac(cond)
+            val dest      = newTemp()
+            val elseLabel = newLabel()
+            val endLabel  = newLabel()
+            instructions += Tac.JumpIfZero(c, elseLabel)
+            val v1 = emitExpressionTac(thenB)
+            instructions += Tac.Copy(v1, dest)
+            instructions += Tac.Jump(endLabel)
+            instructions += elseLabel
+            instructions += Tac.Copy(Tac.Constant(0), dest)
+            instructions += endLabel
+            dest
+        }
+        case If(cond, thenB, Some(elseB)) => {
+            val c         = emitExpressionTac(cond)
+            val dest      = newTemp()
+            val elseLabel = newLabel()
+            val endLabel  = newLabel()
+            instructions += Tac.JumpIfZero(c, elseLabel)
+            val v1 = emitExpressionTac(thenB)
+            instructions += Tac.Copy(v1, dest)
+            instructions += Tac.Jump(endLabel)
+            instructions += elseLabel
+            val v2 = emitExpressionTac(elseB)
+            instructions += Tac.Copy(v2, dest)
+            instructions += endLabel
+            dest
+        }
+        case Return(exp) => {
+            val resultVal = emitExpressionTac(exp)
+            instructions += Tac.Return(resultVal)
+            Tac.Constant(0)
+        }
         case Unary(op, exp) => {
             val srcVal  = emitExpressionTac(exp)
             val destVar = newTemp()
@@ -136,10 +171,6 @@ class TacEmitter(prog: Program) {
     }
 
     def emitStatementTac(s: Statement): Unit = s match {
-        case Return(exp) => {
-            val resultVal = emitExpressionTac(exp)
-            instructions += Tac.Return(resultVal)
-        }
         case ExpressionStmt(exp) => {
             emitExpressionTac(exp)
         }

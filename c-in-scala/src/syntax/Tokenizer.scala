@@ -14,7 +14,7 @@ case class KwReturn() extends Token
 case class KwIf()     extends Token
 case class KwThen()   extends Token
 case class KwElse()   extends Token
-case class KwVoid()   extends Token
+case class KwFun()    extends Token
 case class KwI32()    extends Token
 
 case class LParen()   extends Token
@@ -93,7 +93,7 @@ class Tokenizer(input: String) {
       (Word("if"), _ => KwIf()),
       (Word("then"), _ => KwThen()),
       (Word("else"), _ => KwElse()),
-      (Word("void"), _ => KwVoid()),
+      (Word("fun"), _ => KwFun()),
       (Word("i32"), _ => KwI32()),
       (Lit("<<="), _ => OpLShiftAssign()),
       (Lit(">>="), _ => OpRShiftAssign()),

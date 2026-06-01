@@ -18,15 +18,20 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def parseFunctionDef(): FunctionDef = {
-        expect(KwI32())
+        expect(KwFun())
         val name = expect[TokIdent].value
         expect(LParen())
-        expect(KwVoid())
         expect(RParen())
+        expect(KwI32())
         expect(LBrace())
         var stmts = new ListBuffer[Statement]()
         while tokenizer.peek() != Some(RBrace()) do {
             stmts += parseStatement()
+            if (tokenizer.peek() == Some(OpSemicolon())) {
+                tokenizer.consume()
+            } else if (tokenizer.peek() != Some(RBrace())) {
+                throw ParserError(s"Statements must be seperated by semicolons.")
+            }
         }
         expect(RBrace())
         FunctionDef(name, stmts.toList)
@@ -34,12 +39,6 @@ class Parser(tokenizer: Tokenizer) {
 
     def parseStatement(): Statement = {
         tokenizer.peek().get match {
-            case KwReturn() => {
-                tokenizer.consume()
-                val rv = parseExpression(0)
-                expect(OpSemicolon())
-                Return(rv)
-            }
             case KwVar() => {
                 tokenizer.consume()
                 val name = expect[TokIdent].value
@@ -56,12 +55,10 @@ class Parser(tokenizer: Tokenizer) {
                         Declaration(Var(name), None)
                     }
                 }
-                expect(OpSemicolon())
                 decl
             }
             case _ => {
                 val e = ExpressionStmt(parseExpression(0))
-                expect(OpSemicolon())
                 e
             }
         }
@@ -103,7 +100,7 @@ class Parser(tokenizer: Tokenizer) {
             val cPrec   = precedence(opToken)
 
             if (cPrec == 10) { // it is an assignment
-            	// right-assoicative meaning a = b = c is possible
+                // right-assoicative meaning a = b = c is possible
                 val right = parseExpression(cPrec)
 
                 if (opToken == OpAssign()) {
@@ -160,10 +157,29 @@ class Parser(tokenizer: Tokenizer) {
     def parseFactor(): Expression = {
         tokenizer.next() match {
             case Some(TokIntLit(value)) => Constant(value)
-            case Some(TokIdent(value))  => Var(value)
-            case Some(OpTilde())        => Unary(UnaryOp.Complement, parseFactor())
-            case Some(OpMinus())        => Unary(UnaryOp.Negate, parseFactor())
-            case Some(OpNot())          => Unary(UnaryOp.Not, parseFactor())
+            case Some(KwIf()) => {
+                val cond = parseExpression(0)
+                expect(KwThen())
+                val thenStmt = parseExpression(0)
+                val elseBranch = tokenizer.peek() match {
+                    case Some(KwElse()) => {
+                        tokenizer.consume()
+                        Some(parseExpression(0))
+                    }
+                    case _ => {
+                        None
+                    }
+                }
+                If(cond, thenStmt, elseBranch)
+            }
+            case Some(KwReturn()) => {
+                val rv = parseExpression(0)
+                Return(rv)
+            }
+            case Some(TokIdent(value)) => Var(value)
+            case Some(OpTilde())       => Unary(UnaryOp.Complement, parseFactor())
+            case Some(OpMinus())       => Unary(UnaryOp.Negate, parseFactor())
+            case Some(OpNot())         => Unary(UnaryOp.Not, parseFactor())
             case Some(LParen()) => {
                 val in = parseExpression(0)
                 expect(RParen())
