@@ -23,45 +23,51 @@ class Parser(tokenizer: Tokenizer) {
         expect(LParen())
         expect(RParen())
         expect(KwI32())
-        expect(LBrace())
-        var stmts = new ListBuffer[Statement]()
-        while tokenizer.peek() != Some(RBrace()) do {
-            stmts += parseStatement()
-            if (tokenizer.peek() == Some(OpSemicolon())) {
-                tokenizer.consume()
-            } else if (tokenizer.peek() != Some(RBrace())) {
-                throw ParserError(s"Statements must be seperated by semicolons.")
+        val expr = parseExpression(0)
+        FunctionDef(name, expr)
+    }
+
+    def parseBlock(): Block = {
+        val stmts                         = new ListBuffer[Statement]()
+        var finalExpr: Option[Expression] = None
+
+        while (tokenizer.peek() != Some(RBrace())) {
+            if (tokenizer.peek() == Some(KwVar())) {
+                stmts += parseDeclaration()
+                expect(OpSemicolon())
+            } else {
+                val expr = parseExpression(0)
+                if (tokenizer.peek() == Some(OpSemicolon())) {
+                    tokenizer.consume()
+                    stmts += ExpressionStmt(expr)
+                } else if (tokenizer.peek() == Some(RBrace())) {
+                    finalExpr = Some(expr)
+                } else {
+                    throw ParserError("Statements must be separated by semicolons.")
+                }
             }
         }
         expect(RBrace())
-        FunctionDef(name, stmts.toList)
+        Block(stmts.toList, finalExpr)
     }
 
-    def parseStatement(): Statement = {
-        tokenizer.peek().get match {
-            case KwVar() => {
-                tokenizer.consume()
-                val name = expect[TokIdent].value
-                expect(OpColon())
-                expect(KwI32())
+    def parseDeclaration(): Declaration = {
+        expect(KwVar())
+        val name = expect[TokIdent].value
+        expect(OpColon())
+        expect(KwI32())
 
-                val decl = tokenizer.peek() match {
-                    case Some(OpAssign()) => {
-                        tokenizer.consume()
-                        val init = parseExpression(0)
-                        Declaration(Var(name), Some(init))
-                    }
-                    case _ => {
-                        Declaration(Var(name), None)
-                    }
-                }
-                decl
+        val decl = tokenizer.peek() match {
+            case Some(OpAssign()) => {
+                tokenizer.consume()
+                val init = parseExpression(0)
+                Declaration(Var(name), Some(init))
             }
             case _ => {
-                val e = ExpressionStmt(parseExpression(0))
-                e
+                Declaration(Var(name), None)
             }
         }
+        decl
     }
 
     def precedence(t: Token): Int = t match {
@@ -156,6 +162,7 @@ class Parser(tokenizer: Tokenizer) {
 
     def parseFactor(): Expression = {
         tokenizer.next() match {
+            case Some(LBrace())         => parseBlock()
             case Some(TokIntLit(value)) => Constant(value)
             case Some(KwIf()) => {
                 val cond = parseExpression(0)

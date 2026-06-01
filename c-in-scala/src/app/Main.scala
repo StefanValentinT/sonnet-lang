@@ -36,7 +36,7 @@ object App {
                 pprintln(ast)
                 val fixedAst = VariableResolver.resolveProgram(ast)
                 pprintln(fixedAst)
-                val tacAst = TacEmitter(ast).emitProgramTac()
+                val tacAst = TacEmitter(fixedAst).emitProgramTac()
                 pprintln(tacAst)
                 var asmAst = codegenProgram(tacAst)
                 asmAst = PseudoRegisterReplacer().inProgram(asmAst)

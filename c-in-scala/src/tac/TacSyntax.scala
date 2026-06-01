@@ -87,6 +87,10 @@ class TacEmitter(prog: Program) {
             instructions += Tac.Copy(res, Tac.Var(v))
             Tac.Var(v)
         }
+        case Block(statements, exp) => {
+            statements.foreach(emitStatementTac)
+            if exp.isDefined then emitExpressionTac(exp.get) else Tac.Constant(0)
+        }
         case If(cond, thenB, None) => {
             val c         = emitExpressionTac(cond)
             val dest      = newTemp()
@@ -187,7 +191,8 @@ class TacEmitter(prog: Program) {
         val funcDef = prog.items
         instructions.clear()
 
-        funcDef.body.foreach(emitStatementTac)
+        val ret = emitExpressionTac(funcDef.body)
+        instructions += Tac.Return(ret)
 
         Tac.Program(Tac.FunctionDef(funcDef.name, instructions.toList))
     }

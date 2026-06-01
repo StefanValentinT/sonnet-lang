@@ -6,9 +6,10 @@ import app.CompilerError
 
 class EpistemicError(detail: String) extends CompilerError("Semantic Compiler Pass", detail)
 
+case class MapEntry(newName: String, fromCurrentBlock: Boolean)
+
 object VariableResolver {
-    private val variableMap = Map[String, String]()
-    private var varCounter  = 0
+    private var varCounter = 0
 
     def makeUnique(orig: String): String = {
         varCounter += 1
@@ -20,37 +21,44 @@ object VariableResolver {
     }
 
     def resolveFunctionDef(f: FunctionDef): FunctionDef = {
-        FunctionDef(f.name, f.body.map(resolveStatement))
+        val initialMap = Map[String, MapEntry]()
+        FunctionDef(f.name, resolveExpression(f.body, initialMap))
     }
 
-    def resolveStatement(stmt: Statement): Statement = {
+    def resolveStatement(stmt: Statement, variableMap: Map[String, MapEntry]): Statement = {
         stmt match {
-            case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp))
+            case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp, variableMap))
             case Declaration(vNode, init) => {
                 val name = vNode.name
-                if (variableMap.contains(name)) {
+                if (variableMap.contains(name) && variableMap(name).fromCurrentBlock) {
                     throw EpistemicError(s"Duplicate variable declaration: $name")
                 }
                 val uniqueName = makeUnique(name)
-                variableMap.put(name, uniqueName)
+                variableMap.put(name, MapEntry(uniqueName, true))
 
-                val resolvedInit = init.map(resolveExpression)
+                val resolvedInit = init.map(e => resolveExpression(e, variableMap))
                 Declaration(Var(uniqueName), resolvedInit)
             }
         }
     }
 
-    def resolveExpression(exp: Expression): Expression = {
+    def resolveExpression(exp: Expression, variableMap: Map[String, MapEntry]): Expression = {
         exp match {
-            case If(cond, thenB, elseB) => If(resolveExpression(cond), resolveExpression(thenB), if elseB.isDefined then Some(resolveExpression(elseB.get)) else None)
+            case Block(stmts, exp) => {
+                val innerMap      = copyVariableMap(variableMap)
+                val resolvedStmts = stmts.map(s => resolveStatement(s, innerMap))
+                val resolvedExp   = if exp.isDefined then Some(resolveExpression(exp.get, innerMap)) else None
+                Block(resolvedStmts, resolvedExp)
+            }
+            case If(cond, thenB, elseB) => If(resolveExpression(cond, variableMap), resolveExpression(thenB, variableMap), if elseB.isDefined then Some(resolveExpression(elseB.get, variableMap)) else None)
             case Constant(value)        => Constant(value)
-            case Unary(op, e)           => Unary(op, resolveExpression(e))
-            case Return(exp)            => Return(resolveExpression(exp))
-            case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1), resolveExpression(exp2))
+            case Unary(op, e)           => Unary(op, resolveExpression(e, variableMap))
+            case Return(exp)            => Return(resolveExpression(exp, variableMap))
+            case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1, variableMap), resolveExpression(exp2, variableMap))
             case Var(value) => {
                 variableMap.get(value) match {
-                    case Some(uniqueName) => Var(uniqueName)
-                    case None             => throw EpistemicError(s"Undeclared variable: $value")
+                    case Some(MapEntry(uniqueName, c)) => Var(uniqueName)
+                    case None                          => throw EpistemicError(s"Undeclared variable: $value")
                 }
             }
             case Assignment(target, value) => {
@@ -59,11 +67,20 @@ object VariableResolver {
                         if (!variableMap.contains(name)) {
                             throw EpistemicError(s"Undeclared variable assignment: $name")
                         }
-                        Assignment(Var(variableMap(name)), resolveExpression(value))
+                        Assignment(Var(variableMap(name).newName), resolveExpression(value, variableMap))
                     case _ =>
                         throw EpistemicError("Invalid l-value; target must be a variable node. This could also indicate that a compound operator was falsely used in a declaration.")
                 }
             }
         }
     }
+
+    def copyVariableMap(currentMap: Map[String, MapEntry]): Map[String, MapEntry] = {
+        val newMap = Map[String, MapEntry]()
+        currentMap.foreach { case (key, entry) =>
+            newMap.put(key, entry.copy(fromCurrentBlock = false))
+        }
+        newMap
+    }
+
 }

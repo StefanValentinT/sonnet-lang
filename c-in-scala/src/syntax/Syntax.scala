@@ -4,10 +4,13 @@ import collection.mutable.Map
 
 case class Program(items: FunctionDef)
 
-case class FunctionDef(name: String, body: List[Statement])
+case class FunctionDef(name: String, body: Expression)
 
 abstract sealed class Statement
 case class Declaration(name: Var, init: Option[Expression]) extends Statement
+case class Break()                                          extends Statement
+case class Continue()                                       extends Statement
+case class While(cond: Expression, body: Expression)        extends Statement
 case class ExpressionStmt(exp: Expression)                  extends Statement
 
 abstract sealed class Expression
@@ -19,7 +22,7 @@ case class Assignment(target: Expression, value: Expression)                    
 case class If(cond: Expression, thenBranch: Expression, elseBranch: Option[Expression]) extends Expression
 case class Return(exp: Expression)                                                      extends Expression
 // creates a new scope so no circular dependency between expression and statement
-//case class Block(statements: List[Statement], exp: Option[Expression]) extends Expression
+case class Block(statements: List[Statement], exp: Option[Expression]) extends Expression
 
 enum UnaryOp {
     case Complement, Negate, Not
