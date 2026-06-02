@@ -3,9 +3,7 @@ package app
 import io.{FileScanner, FileWriter}
 import syntax.*
 import pprint.pprintln
-import arm64.*
-import tac.*
-import episteme.*
+import codegen.*
 
 open class CompilerError(who: String, detail: String = null)
     extends RuntimeException({
@@ -34,18 +32,9 @@ object App {
                 println(s"Compiling $filename:")
                 val ast = Parser.fromString(fileContent).parse()
                 pprintln(ast)
-                val fixedAst   = VariableResolver.resolveProgram(ast)
-                val labeledAst = LoopLabeler.labelProgram(fixedAst)
-                TypeChecker.typecheckProgram(labeledAst)
-                pprintln(labeledAst)
-                val tacAst = TacEmitter(labeledAst).emitProgramTac()
-                pprintln(tacAst)
-
-                var asmAst = codegenProgram(tacAst)
-                asmAst = PseudoRegisterReplacer().inProgram(asmAst)
-                pprintln(asmAst)
-
-                val asmString = Emitter().emitProgram(asmAst)
+                val lowCode = CodeGen.genLowCode(ast)
+                pprintln(lowCode)
+                val asmString = CodeGen.emitLowCode(lowCode)
                 println(asmString)
                 FileWriter.writeFile(filename, asmString)
             }

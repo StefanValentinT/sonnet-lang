@@ -6,6 +6,4 @@ Many languages suffer from a gap between what is possible within their native sy
 
 Sonnet is a simple language in the sense of a language from which nothing can be removed, and one that performs no action unless explicitly commanded by the user.
 
-# Ginko
-
-Ginko is a medium-level language designed to be a simpler replacement for C and LLVM. Based on an infinite-register machine, it is platform-independent while granting programmers the greatest possible freedom to define how a program executes close to the way assembly works. Ginko will be used as the backend for Sonnet.
+Sonnet tries to achieve perfect interoperabilty and performance parity with C.

@@ -1,3 +1,20 @@
+/*
+// use only when compiling for native exec using `mill nativeLink`
+package build
+import mill._, scalalib._, scalanativelib._
+
+object `package` extends ScalaNativeModule {
+    def scalaVersion = "3.3.5" 
+    def scalaNativeVersion = "0.5.8"
+    def mvnDeps = Seq(
+      mvn"com.lihaoyi::pprint::0.9.6"
+    )
+    override def sources = Task.Sources {
+        moduleDir / "src"
+    }
+}
+*/
+
 package build
 import mill._, scalalib._
 
@@ -7,7 +24,6 @@ object `package` extends ScalaModule {
 
     def mvnDeps = Seq(
       mvn"com.lihaoyi::pprint:0.9.6",
-      ivy"com.lihaoyi::fastparse:3.1.1"
     )
 
     override def sources = Task.Sources {

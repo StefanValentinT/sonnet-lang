@@ -1,7 +1,7 @@
-default:
-	# mill --bsp-install
+default file:
+	mill --bsp-install
 	# scalafmt ./build.mill
 	scalafmt ./src/
 	mill run test2.lang
-	gcc build/test2.s -o build/test2
+	gcc build/test2.s runtime.c -o build/test2
 	./build/test2; echo $?
