@@ -2,15 +2,26 @@ package syntax
 
 import collection.mutable.Map
 
-case class Program(items: FunctionDef)
+case class Program(items: List[TopLevelItem])
 
-case class FunctionDef(name: String, body: Expression)
+abstract sealed class TopLevelItem
+case class Declaration(name: String, argCount: Int)                          extends TopLevelItem
+case class FunctionDef(name: String, params: List[String], body: Expression) extends TopLevelItem
 
 abstract sealed class Statement
-case class Declaration(name: Var, init: Option[Expression]) extends Statement
-case class ExpressionStmt(exp: Expression)                  extends Statement
+case class VarDeclaration(name: Var, init: Option[Expression]) extends Statement
+case class ExpressionStmt(exp: Expression)                     extends Statement
 
-abstract sealed class Expression
+abstract sealed class Expression {
+    private var typ: Option[Type] = None
+    def setType(newType: Type): Unit = {
+        typ = Some(newType)
+    }
+    def optType: Option[Type] = typ
+    def getType: Type = typ.getOrElse(
+      throw new IllegalStateException(s"AST node $this has no type!")
+    )
+}
 case class Constant(value: Int)                                                         extends Expression
 case class Var(name: String)                                                            extends Expression
 case class Unary(op: UnaryOp, exp: Expression)                                          extends Expression
@@ -21,8 +32,13 @@ case class Return(exp: Expression)                                              
 case class Break(label: String)                                                         extends Expression
 case class Continue(label: String)                                                      extends Expression
 case class While(cond: Expression, body: Expression, label: String)                     extends Expression
+case class FunctionCall(target: String, args: List[Expression])                         extends Expression
 // creates a new scope so no circular dependency between expression and statement
 case class Block(statements: List[Statement], exp: Option[Expression]) extends Expression
+
+abstract sealed class Type
+case class I32()                  extends Type
+case class FunType(argCount: Int) extends Type
 
 enum UnaryOp {
     case Complement, Negate, Not

@@ -13,11 +13,18 @@ object LoopLabeler {
     }
 
     def labelProgram(p: Program): Program = {
-        Program(labelFunctionDef(p.items))
+        Program(
+          p.items.map(e =>
+              e match {
+                  case d: Declaration => d
+                  case f: FunctionDef => labelFunctionDef(f)
+              }
+          )
+        )
     }
 
     def labelFunctionDef(f: FunctionDef): FunctionDef = {
-        FunctionDef(f.name, labelExpression(f.body, None))
+        FunctionDef(f.name, f.params, labelExpression(f.body, None))
     }
 
     def labelStatement(stmt: Statement, currentLabel: Option[String]): Statement = {
@@ -25,12 +32,12 @@ object LoopLabeler {
             case ExpressionStmt(exp) =>
                 ExpressionStmt(labelExpression(exp, currentLabel))
 
-            case Declaration(vNode, Some(initExp)) =>
+            case VarDeclaration(vNode, Some(initExp)) =>
                 val labeledInit = labelExpression(initExp, currentLabel)
-                Declaration(vNode, Some(labeledInit))
+                VarDeclaration(vNode, Some(labeledInit))
 
-            case Declaration(vNode, None) =>
-                Declaration(vNode, None)
+            case VarDeclaration(vNode, None) =>
+                VarDeclaration(vNode, None)
         }
     }
 
@@ -86,9 +93,9 @@ object LoopLabeler {
 
             case Return(e) =>
                 Return(labelExpression(e, currentLabel))
-
-            case c @ Constant(_) => c
-            case v @ Var(_)      => v
+            case FunctionCall(target, args) => FunctionCall(target, args.map(labelExpression(_, currentLabel)))
+            case c @ Constant(_)            => c
+            case v @ Var(_)                 => v
         }
     }
 }

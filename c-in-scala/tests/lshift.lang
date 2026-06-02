@@ -1,6 +1,9 @@
+print_i32 : (i32) -> i32;
+
 fun main() i32{
 	var x : i32 = 5;
 	x = 3;
 	var y : i32 = 2;
-	x<<y
-}
+	print_i32(x<<y);
+	0
+};

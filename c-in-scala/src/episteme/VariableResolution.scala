@@ -3,10 +3,12 @@ package episteme
 import syntax.*
 import scala.collection.mutable.Map
 import app.CompilerError
+import scala.collection.mutable.ListBuffer
+import pprint.pprintln
 
 class EpistemicError(detail: String) extends CompilerError("Semantic Compiler Pass", detail)
 
-case class MapEntry(newName: String, fromCurrentBlock: Boolean)
+case class MapEntry(newName: String, fromCurrentBlock: Boolean, hasLinkage: Boolean)
 
 object VariableResolver {
     private var varCounter = 0
@@ -17,27 +19,63 @@ object VariableResolver {
     }
 
     def resolveProgram(p: Program): Program = {
-        Program(resolveFunctionDef(p.items))
+        val globalVariableMap = Map[String, MapEntry]()
+        val resolvedItems = p.items.map {
+            case d: Declaration => resolveGlobalDeclaration(d, globalVariableMap)
+            case f: FunctionDef => resolveFunctionDef(f, globalVariableMap)
+        }
+        Program(resolvedItems)
     }
 
-    def resolveFunctionDef(f: FunctionDef): FunctionDef = {
-        val initialMap = Map[String, MapEntry]()
-        FunctionDef(f.name, resolveExpression(f.body, initialMap))
+    def resolveGlobalDeclaration(decl: Declaration, variableMap: Map[String, MapEntry]): TopLevelItem = {
+        if (variableMap.contains(decl.name)) {
+            val prevEntry = variableMap(decl.name)
+            if (prevEntry.fromCurrentBlock && !prevEntry.hasLinkage) {
+                throw EpistemicError(s"Duplicate declaration of name: ${decl.name}")
+            }
+        }
+        variableMap.put(decl.name, MapEntry(decl.name, true, true))
+        decl
+    }
+
+    def resolveFunctionDef(f: FunctionDef, variableMap: Map[String, MapEntry]): FunctionDef = {
+        if (variableMap.contains(f.name)) {
+            val prevEntry = variableMap(f.name)
+            if (prevEntry.fromCurrentBlock && !prevEntry.hasLinkage) {
+                throw EpistemicError(s"Duplicate declaration: ${f.name} conflicts with a local variable.")
+            }
+        }
+        variableMap.put(f.name, MapEntry(f.name, true, true))
+
+        val innerMap       = copyVariableMap(variableMap)
+        val resolvedParams = new ListBuffer[String]()
+
+        for (param <- f.params) {
+            if (innerMap.contains(param) && innerMap(param).fromCurrentBlock) {
+                throw EpistemicError(s"Duplicate parameter declaration: $param")
+            }
+            val uniqueParamName = makeUnique(param)
+            innerMap.put(param, MapEntry(uniqueParamName, true, false))
+            resolvedParams.append(uniqueParamName)
+        }
+
+        val resolvedBody = resolveExpression(f.body, innerMap)
+        FunctionDef(f.name, resolvedParams.toList, resolvedBody)
     }
 
     def resolveStatement(stmt: Statement, variableMap: Map[String, MapEntry]): Statement = {
         stmt match {
             case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp, variableMap))
-            case Declaration(vNode, init) => {
+            case VarDeclaration(vNode, init) => {
                 val name = vNode.name
                 if (variableMap.contains(name) && variableMap(name).fromCurrentBlock) {
                     throw EpistemicError(s"Duplicate variable declaration: $name")
                 }
                 val uniqueName = makeUnique(name)
-                variableMap.put(name, MapEntry(uniqueName, true))
+                variableMap.put(name, MapEntry(uniqueName, true, false))
 
                 val resolvedInit = init.map(e => resolveExpression(e, variableMap))
-                Declaration(Var(uniqueName), resolvedInit)
+                VarDeclaration(Var(uniqueName), resolvedInit)
             }
         }
     }
@@ -60,10 +98,16 @@ object VariableResolver {
             case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1, variableMap), resolveExpression(exp2, variableMap))
             case Var(value) => {
                 variableMap.get(value) match {
-                    case Some(MapEntry(uniqueName, c)) => Var(uniqueName)
-                    case None                          => throw EpistemicError(s"Undeclared variable: $value")
+                    case Some(MapEntry(uniqueName, _, _)) => Var(uniqueName)
+                    case None                             => throw EpistemicError(s"Undeclared variable: $value")
                 }
             }
+            case FunctionCall(target, args) =>
+                variableMap.get(target) match {
+                    case Some(MapEntry(uniqueName, _, _)) => FunctionCall(uniqueName, args.map(resolveExpression(_, variableMap)))
+                    case None =>
+                        throw EpistemicError(s"Undeclared function: $target")
+                }
             case Assignment(target, value) => {
                 target match {
                     case Var(name) =>

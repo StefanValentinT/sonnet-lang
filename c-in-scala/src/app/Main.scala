@@ -35,13 +35,16 @@ object App {
                 val ast = Parser.fromString(fileContent).parse()
                 pprintln(ast)
                 val fixedAst   = VariableResolver.resolveProgram(ast)
-                val labeledAst = LoopLabeler.labelProgram(ast)
+                val labeledAst = LoopLabeler.labelProgram(fixedAst)
+                TypeChecker.typecheckProgram(labeledAst)
                 pprintln(labeledAst)
                 val tacAst = TacEmitter(labeledAst).emitProgramTac()
                 pprintln(tacAst)
+
                 var asmAst = codegenProgram(tacAst)
                 asmAst = PseudoRegisterReplacer().inProgram(asmAst)
                 pprintln(asmAst)
+
                 val asmString = Emitter().emitProgram(asmAst)
                 println(asmString)
                 FileWriter.writeFile(filename, asmString)

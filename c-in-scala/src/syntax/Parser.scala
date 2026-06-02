@@ -14,17 +14,62 @@ object Parser {
 class Parser(tokenizer: Tokenizer) {
 
     def parse(): Program = {
-        Program(parseFunctionDef())
+        val items = new ListBuffer[TopLevelItem]()
+        while (tokenizer.peek().isDefined) {
+            tokenizer.peek() match {
+                case Some(KwFun())     => items += parseFunctionDef()
+                case Some(TokIdent(_)) => items += parseDeclaration()
+                case Some(other)       => throw ParserError(s"Expected function or top-level declaration, got: $other")
+            }
+            expect(OpSemicolon())
+        }
+        Program(items.toList)
+    }
+
+    def parseDeclaration(): Declaration = {
+        val name = expect[TokIdent].value
+        expect(OpColon())
+        expect(LParen())
+
+        var argCount = 0
+        if (tokenizer.peek() != Some(RParen())) {
+            expect(KwI32())
+            argCount += 1
+            while (tokenizer.peek() == Some(OpComma())) {
+                tokenizer.consume()
+                expect(KwI32())
+                argCount += 1
+            }
+        }
+        expect(RParen())
+        expect(OpArrow())
+        expect(KwI32())
+
+        Declaration(name, argCount)
     }
 
     def parseFunctionDef(): FunctionDef = {
         expect(KwFun())
         val name = expect[TokIdent].value
         expect(LParen())
+
+        val params = new ListBuffer[String]()
+        if (tokenizer.peek() != Some(RParen())) {
+            params += expect[TokIdent].value
+            expect(OpColon())
+            expect(KwI32())
+            while (tokenizer.peek() == Some(OpComma())) {
+                tokenizer.consume()
+                params += expect[TokIdent].value
+                expect(OpColon())
+                expect(KwI32())
+            }
+        }
+
         expect(RParen())
         expect(KwI32())
         val expr = parseExpression(0)
-        FunctionDef(name, expr)
+        FunctionDef(name, params.toList, expr)
     }
 
     def parseBlock(): Block = {
@@ -54,7 +99,7 @@ class Parser(tokenizer: Tokenizer) {
     def parseStatement(): Statement = {
         tokenizer.peek() match {
             case Some(KwVar()) =>
-                parseDeclaration()
+                parseVarDeclaration()
 
             case Some(_) =>
                 val expr = parseExpression(0)
@@ -65,7 +110,7 @@ class Parser(tokenizer: Tokenizer) {
         }
     }
 
-    def parseDeclaration(): Declaration = {
+    def parseVarDeclaration(): VarDeclaration = {
         expect(KwVar())
         val name = expect[TokIdent].value
         expect(OpColon())
@@ -75,10 +120,10 @@ class Parser(tokenizer: Tokenizer) {
             case Some(OpAssign()) => {
                 tokenizer.consume()
                 val init = parseExpression(0)
-                Declaration(Var(name), Some(init))
+                VarDeclaration(Var(name), Some(init))
             }
             case _ => {
-                Declaration(Var(name), None)
+                VarDeclaration(Var(name), None)
             }
         }
         decl
@@ -208,10 +253,31 @@ class Parser(tokenizer: Tokenizer) {
 
             case Some(KwContinue()) =>
                 Continue("")
-            case Some(TokIdent(value)) => Var(value)
-            case Some(OpTilde())       => Unary(UnaryOp.Complement, parseFactor())
-            case Some(OpMinus())       => Unary(UnaryOp.Negate, parseFactor())
-            case Some(OpNot())         => Unary(UnaryOp.Not, parseFactor())
+            case Some(TokIdent(value)) => {
+                tokenizer.peek() match {
+                    case Some(LParen()) => {
+                        tokenizer.consume()
+                        val args = new ListBuffer[Expression]()
+                        if (tokenizer.peek() != Some(RParen())) {
+                            args += parseExpression(0)
+
+                            while (tokenizer.peek() == Some(OpComma())) {
+                                tokenizer.consume()
+                                args += parseExpression(0)
+                            }
+                        }
+
+                        expect(RParen())
+                        FunctionCall(value, args.toList)
+                    }
+                    case _ => {
+                        Var(value)
+                    }
+                }
+            }
+            case Some(OpTilde()) => Unary(UnaryOp.Complement, parseFactor())
+            case Some(OpMinus()) => Unary(UnaryOp.Negate, parseFactor())
+            case Some(OpNot())   => Unary(UnaryOp.Not, parseFactor())
             case Some(LParen()) => {
                 val in = parseExpression(0)
                 expect(RParen())

@@ -4,11 +4,26 @@ import tac.Tac
 import scala.collection.mutable.{Map, ListBuffer}
 
 def codegenProgram(p: Tac.Program): Asm.Program =
-    Asm.Program(codegenFunction(p.items))
+    Asm.Program(p.items.map(codegenFunction))
 
-def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef =
-    val asmInstructions = f.body.flatMap(codegenInstruction)
+def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
+    val paramRegisters = List(Asm.Reg.W0, Asm.Reg.W1, Asm.Reg.W2, Asm.Reg.W3, Asm.Reg.W4, Asm.Reg.W5, Asm.Reg.W6, Asm.Reg.W7)
+
+    val paramMoves = f.params.zipWithIndex.flatMap { case (paramName, index) =>
+        if (index < 8) {
+            List(Asm.Mov(Asm.Register(paramRegisters(index)), Asm.PseudoReg(paramName)))
+        } else {
+            val incomingOffset = (index - 8) * 8
+            List(
+              Asm.Load(Asm.StackSlot(incomingOffset), Asm.Register(Asm.Reg.W9)),
+              Asm.Mov(Asm.Register(Asm.Reg.W9), Asm.PseudoReg(paramName))
+            )
+        }
+    }
+
+    val asmInstructions = paramMoves ++ f.body.flatMap(codegenInstruction)
     Asm.FunctionDef(f.name, asmInstructions)
+}
 
 def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match {
     case Tac.Return(value) =>
@@ -80,6 +95,28 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
           Asm.Compare(codegenTacVal(cond), Asm.Register(Asm.Reg.WZR)),
           Asm.ConditionalBranch(Asm.ConditionCode.NotEqual, target.name)
         )
+    case Tac.FunctionCall(target, args, dest) => {
+
+        val argSetup = args.zipWithIndex.flatMap { case (argVal, index) =>
+            if (index < 8) {
+                List(Asm.Mov(codegenTacVal(argVal), Asm.Register(Asm.paramRegisters(index))))
+            } else {
+                List(Asm.Push(codegenTacVal(argVal)))
+            }
+        }
+
+        val stackCleanup = if (args.length > 8) {
+            val stackBytes   = (args.length - 8) * 8
+            val alignedBytes = pad16(stackBytes)
+            List(Asm.DeallocateStack(alignedBytes))
+        } else {
+            Nil
+        }
+
+        argSetup ++ List(Asm.Call(target)) ++ stackCleanup ++ List(
+          Asm.Mov(Asm.Register(Asm.Reg.W0), codegenTacVal(dest))
+        )
+    }
 }
 
 private def convertConditionCode(op: Tac.BinaryOp): Asm.ConditionCode = op match {
@@ -143,8 +180,8 @@ class PseudoRegisterReplacer {
     }
 
     def inProgram(p: Asm.Program): Asm.Program = {
-        val newFun = replaceInFunction(p.items)
-        Asm.Program(newFun)
+        val newFuns = p.items.map(replaceInFunction)
+        Asm.Program(newFuns)
     }
 
     private def replaceOperand(op: Asm.Operand): Asm.Operand = {
@@ -275,6 +312,19 @@ class PseudoRegisterReplacer {
                         }
                     }
                 }
+                case Asm.Call(target)          => List(Asm.Call(target))
+                case Asm.DeallocateStack(size) => List(Asm.DeallocateStack(size))
+                case Asm.Push(src) => {
+                    val newSrc = replaceOperand(src)
+                    newSrc match {
+                        case slot: Asm.StackSlot =>
+                            List(
+                              Asm.Load(slot, Asm.Register(Asm.Reg.W9)),
+                              Asm.Push(Asm.Register(Asm.Reg.W9))
+                            )
+                        case other => List(Asm.Push(other))
+                    }
+                }
                 case other => {
                     List(other)
                 }
@@ -284,7 +334,8 @@ class PseudoRegisterReplacer {
         val totalBytes = currentOffset.abs
 
         if (totalBytes > 0) {
-            newInstructions = Asm.AllocateStack(totalBytes) :: newInstructions
+            val alignedBytes = pad16(totalBytes)
+            newInstructions = Asm.AllocateStack(alignedBytes) :: newInstructions
         }
 
         Asm.FunctionDef(f.name, newInstructions)

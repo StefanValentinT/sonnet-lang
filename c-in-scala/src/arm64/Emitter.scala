@@ -7,7 +7,7 @@ class Emitter() {
 
     def emitProgram(p: Asm.Program): String = {
         sb.append(".text\n")
-        emitFunction(p.items)
+        p.items.foreach(emitFunction)
         sb.toString()
     }
 
@@ -23,8 +23,6 @@ class Emitter() {
             sb.append("\n")
         })
     }
-
-    def pad16(size: Int): Int = (size + 15) & ~15
 
     def emitInstruction(i: Asm.Instruction) = i match {
         case Asm.AllocateStack(size) => inst(s"sub sp, sp, #${pad16(size)}")
@@ -72,17 +70,41 @@ class Emitter() {
         case Asm.Label(name) => {
             sb.append(s"$name:")
         }
+
+        case Asm.Call(target) => {
+            inst(s"bl _$target")
+        }
+        case Asm.DeallocateStack(size) => {
+            inst(s"add sp, sp, #${size}")
+        }
+        case Asm.Push(operand) => {
+            operand match {
+                case Asm.Register(reg) => inst(s"str ${showOp(operand)}, [sp, #-16]!")
+                case Asm.Imm(ival) => {
+                    inst(s"mov w9, #$ival\n")
+                    inst("str w9, [sp, #-16]!")
+                }
+                case _ => throw new RuntimeException("Unsupported push operand type")
+            }
+        }
     }
 
     def showOp(o: Asm.Operand): String = o match {
         case Asm.Imm(ival)             => s"#$ival"
         case Asm.StackSlot(offset)     => s"[x29, #$offset]"
         case Asm.Register(Asm.Reg.W0)  => "w0"
+        case Asm.Register(Asm.Reg.W1)  => "w1"
+        case Asm.Register(Asm.Reg.W2)  => "w2"
+        case Asm.Register(Asm.Reg.W3)  => "w3"
+        case Asm.Register(Asm.Reg.W4)  => "w4"
+        case Asm.Register(Asm.Reg.W5)  => "w5"
+        case Asm.Register(Asm.Reg.W6)  => "w6"
+        case Asm.Register(Asm.Reg.W7)  => "w7"
         case Asm.Register(Asm.Reg.W9)  => "w9"
         case Asm.Register(Asm.Reg.W10) => "w10"
         case Asm.Register(Asm.Reg.W11) => "w11"
         case Asm.Register(Asm.Reg.WZR) => "wzr"
-        case _                         => throw new RuntimeException("Unexpected operand type")
+        case _                         => throw new RuntimeException(s"Unexpected operand type: $o")
     }
 
     private def showConditionCode(cc: Asm.ConditionCode): String = cc match {

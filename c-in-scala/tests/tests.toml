@@ -1,14 +1,15 @@
 [return one]
 file = "first.lang"
 expect = ""
-return = 1
 
 [logical left shift]
 file = "lshift.lang"
-expect = ""
-return = 12
+expect = "12"
 
 [nth highly composite number]
 file = "highly-composite.lang"
-expect = ""
-return = 120
+expect = "12"
+
+[functions]
+file = "functions.lang"
+expect = "16"

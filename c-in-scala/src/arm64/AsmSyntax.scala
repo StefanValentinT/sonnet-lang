@@ -1,7 +1,7 @@
 package arm64
 
 object Asm {
-    case class Program(items: FunctionDef)
+    case class Program(items: List[FunctionDef])
 
     case class FunctionDef(name: String, instructions: List[Instruction])
 
@@ -11,6 +11,9 @@ object Asm {
     case class Store(src: Register, dest: StackSlot)                             extends Instruction
     case class Unary(op: UnaryOp, operand: Operand)                              extends Instruction
     case class AllocateStack(size: Int)                                          extends Instruction
+    case class DeallocateStack(size: Int)                                        extends Instruction
+    case class Push(src: Operand)                                                extends Instruction
+    case class Call(target: String)                                              extends Instruction
     case class Ret()                                                             extends Instruction
     case class Binary(op: BinaryOp, src1: Operand, src2: Operand, dest: Operand) extends Instruction
     // dest = src3 - (src1 * src2)
@@ -28,8 +31,16 @@ object Asm {
     case class StackSlot(offset: Int)  extends Operand
 
     enum Reg {
-        case W0, W9, W10, W11, WZR
+        // return value and parameter registers
+        case W0, W1, W2, W3, W4, W5, W6, W7,
+            // temporary registers
+            W9, W10, W11,
+            // zero register
+            WZR,
+            // link register
+            X30
     }
+    val paramRegisters = List(Asm.Reg.W0, Asm.Reg.W1, Asm.Reg.W2, Asm.Reg.W3, Asm.Reg.W4, Asm.Reg.W5, Asm.Reg.W6, Asm.Reg.W7)
 
     enum UnaryOp {
         case Neg, Not

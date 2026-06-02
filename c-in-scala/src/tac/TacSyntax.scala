@@ -3,11 +3,12 @@ package tac
 import syntax.*
 import scala.collection.mutable.ListBuffer
 import tac.Tac.JumpIfZero
+import pprint.pprintln
 
 object Tac {
-    case class Program(items: FunctionDef)
+    case class Program(items: List[FunctionDef])
 
-    case class FunctionDef(name: String, body: List[Instruction])
+    case class FunctionDef(name: String, params: List[String], body: List[Instruction])
 
     abstract sealed class Instruction
     case class Return(value: Val)                                          extends Instruction
@@ -18,6 +19,7 @@ object Tac {
     case class Jump(target: Label)                                         extends Instruction
     case class JumpIfZero(cond: Val, target: Label)                        extends Instruction
     case class JumpIfNotZero(cond: Val, target: Label)                     extends Instruction
+    case class FunctionCall(target: String, args: List[Val], dest: Val)    extends Instruction
 
     abstract sealed class Val
     case class Constant(value: Int) extends Val
@@ -192,14 +194,18 @@ class TacEmitter(prog: Program) {
             instructions += Tac.Jump(Tac.Label(s"continue_$label"))
             Tac.Constant(0)
         }
-
+        case FunctionCall(target, args) => {
+            val dest = newTemp()
+            instructions += Tac.FunctionCall(target, args.map(emitExpressionTac), dest)
+            dest
+        }
     }
 
     def emitStatementTac(s: Statement): Unit = s match {
         case ExpressionStmt(exp) => {
             emitExpressionTac(exp)
         }
-        case Declaration(Var(name), initializerOpt) =>
+        case VarDeclaration(Var(name), initializerOpt) =>
             initializerOpt match {
                 case Some(initExpr) =>
                     val res = emitExpressionTac(initExpr)
@@ -208,13 +214,19 @@ class TacEmitter(prog: Program) {
             }
     }
 
-    def emitProgramTac(): Tac.Program = {
-        val funcDef = prog.items
+    def emitFunctionDef(funcDef: FunctionDef): Tac.FunctionDef = {
         instructions.clear()
-
         val ret = emitExpressionTac(funcDef.body)
         instructions += Tac.Return(ret)
+        Tac.FunctionDef(funcDef.name, funcDef.params, instructions.toList)
+    }
 
-        Tac.Program(Tac.FunctionDef(funcDef.name, instructions.toList))
+    def emitProgramTac(): Tac.Program = {
+        val funs = ListBuffer[Tac.FunctionDef]()
+        prog.items.foreach {
+            case f: FunctionDef => funs.append(emitFunctionDef(f))
+            case _              => ()
+        }
+        Tac.Program(funs.toList)
     }
 }
