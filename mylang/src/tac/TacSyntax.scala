@@ -1,14 +1,18 @@
 package tac
 
-import syntax.*
+import episteme.Typed
 import scala.collection.mutable.ListBuffer
 import tac.Tac.JumpIfZero
 import pprint.pprintln
+import app.CompilerError
+import syntax.*
 
 object Tac {
-    case class Program(items: List[FunctionDef])
+    case class Program(items: List[TopLevelItem])
 
-    case class FunctionDef(name: String, params: List[String], body: List[Instruction])
+    abstract sealed class TopLevelItem
+    case class FunctionDef(name: String, isGlobal: Boolean, params: List[String], body: List[Instruction]) extends TopLevelItem
+    case class StaticVariable(name: String, isGlobal: Boolean, init: Int)                                  extends TopLevelItem
 
     abstract sealed class Instruction
     case class Return(value: Val)                                          extends Instruction
@@ -38,7 +42,9 @@ object Tac {
 
 }
 
-class TacEmitter(prog: Program) {
+class TacEmitterError(detail: String) extends CompilerError("Three-address-code generator", detail)
+
+class TacEmitter(prog: Typed.Program) {
 
     private var tempCounter  = 0
     private var labelCounter = 0
@@ -79,21 +85,27 @@ class TacEmitter(prog: Program) {
         case BinaryOp.RShift         => Tac.BinaryOp.RShift
     }
 
-    def emitExpressionTac(e: Expression): Tac.Val = e match {
-        case Constant(value) =>
+    private def isGlobal(linkage: Linkage): Boolean =
+        linkage match {
+            case Linkage.Public  => true
+            case Linkage.Private => false
+        }
+
+    def emitExpressionTac(e: Typed.Expression): Tac.Val = e match {
+        case Typed.Constant(value, typ) =>
             Tac.Constant(value)
-        case Var(value) =>
+        case Typed.Var(value, typ) =>
             Tac.Var(value)
-        case Assignment(Var(v), rhs) => {
+        case Typed.Assignment(Typed.Var(v, varType), rhs, typ) => {
             val res = emitExpressionTac(rhs)
             instructions += Tac.Copy(res, Tac.Var(v))
             Tac.Var(v)
         }
-        case Block(statements, exp) => {
+        case Typed.Block(statements, exp, typ) => {
             statements.foreach(emitStatementTac)
             if exp.isDefined then emitExpressionTac(exp.get) else Tac.Constant(0)
         }
-        case If(cond, thenB, None) => {
+        case Typed.If(cond, thenB, None, typ) => {
             val c         = emitExpressionTac(cond)
             val dest      = newTemp()
             val elseLabel = newLabel()
@@ -107,7 +119,7 @@ class TacEmitter(prog: Program) {
             instructions += endLabel
             dest
         }
-        case If(cond, thenB, Some(elseB)) => {
+        case Typed.If(cond, thenB, Some(elseB), typ) => {
             val c         = emitExpressionTac(cond)
             val dest      = newTemp()
             val elseLabel = newLabel()
@@ -122,19 +134,19 @@ class TacEmitter(prog: Program) {
             instructions += endLabel
             dest
         }
-        case Return(exp) => {
+        case Typed.Return(exp, typ) => {
             val resultVal = emitExpressionTac(exp)
             instructions += Tac.Return(resultVal)
             Tac.Constant(0)
         }
-        case Unary(op, exp) => {
+        case Typed.Unary(op, exp, typ) => {
             val srcVal  = emitExpressionTac(exp)
             val destVar = newTemp()
             instructions += Tac.Unary(convertUnOp(op), srcVal, destVar)
             destVar
         }
 
-        case Binary(BinaryOp.And, e1, e2) => {
+        case Typed.Binary(BinaryOp.And, e1, e2, typ) => {
             val v1         = emitExpressionTac(e1)
             val falseLabel = newLabel()
             val endLabel   = newLabel()
@@ -150,7 +162,7 @@ class TacEmitter(prog: Program) {
             dest
         }
 
-        case Binary(BinaryOp.Or, e1, e2) => {
+        case Typed.Binary(BinaryOp.Or, e1, e2, typ) => {
             val v1         = emitExpressionTac(e1)
             val falseLabel = newLabel()
             val endLabel   = newLabel()
@@ -166,7 +178,7 @@ class TacEmitter(prog: Program) {
             dest
         }
 
-        case Binary(op, e1, e2) => {
+        case Typed.Binary(op, e1, e2, typ) => {
             val v1   = emitExpressionTac(e1)
             val v2   = emitExpressionTac(e2)
             val dest = newTemp()
@@ -174,7 +186,7 @@ class TacEmitter(prog: Program) {
             dest
         }
 
-        case While(cond, body, label) => {
+        case Typed.While(cond, body, label, typ) => {
             val breakLabel    = Tac.Label(s"break_$label")
             val continueLabel = Tac.Label(s"continue_$label")
             instructions += continueLabel
@@ -186,26 +198,26 @@ class TacEmitter(prog: Program) {
             Tac.Constant(0)
         }
 
-        case Break(label) => {
+        case Typed.Break(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"break_$label"))
             Tac.Constant(0)
         }
-        case Continue(label) => {
+        case Typed.Continue(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"continue_$label"))
             Tac.Constant(0)
         }
-        case FunctionCall(target, args) => {
+        case Typed.FunctionCall(target, args, typ) => {
             val dest = newTemp()
             instructions += Tac.FunctionCall(target, args.map(emitExpressionTac), dest)
             dest
         }
     }
 
-    def emitStatementTac(s: Statement): Unit = s match {
-        case ExpressionStmt(exp) => {
+    def emitStatementTac(s: Typed.Statement): Unit = s match {
+        case Typed.ExpressionStmt(exp) => {
             emitExpressionTac(exp)
         }
-        case VarDeclaration(Var(name), initializerOpt) =>
+        case Typed.VarDeclaration(name, initializerOpt) =>
             initializerOpt match {
                 case Some(initExpr) =>
                     val res = emitExpressionTac(initExpr)
@@ -214,19 +226,33 @@ class TacEmitter(prog: Program) {
             }
     }
 
-    def emitFunctionDef(funcDef: FunctionDef): Tac.FunctionDef = {
+    def emitFunctionDef(funcDef: Typed.FunctionDef): Tac.FunctionDef = {
         instructions.clear()
         val ret = emitExpressionTac(funcDef.body)
         instructions += Tac.Return(ret)
-        Tac.FunctionDef(funcDef.name, funcDef.params, instructions.toList)
+
+        val flatParams = funcDef.params.map({ case (pName, _) => pName })
+        Tac.FunctionDef(funcDef.name, isGlobal(funcDef.linkage), flatParams, instructions.toList)
     }
 
     def emitProgramTac(): Tac.Program = {
-        val funs = ListBuffer[Tac.FunctionDef]()
-        prog.items.foreach {
-            case f: FunctionDef => funs.append(emitFunctionDef(f))
-            case _              => ()
-        }
-        Tac.Program(funs.toList)
+        val topItems = ListBuffer[Tac.TopLevelItem]()
+        prog.items.foreach({ (item) =>
+            item match {
+                case f: Typed.FunctionDef =>
+                    topItems.append(emitFunctionDef(f))
+                case v: Typed.GlobalVarDeclaration => {
+
+                    val initInt = v.init match {
+                        case Some(Typed.Constant(value, _)) => value
+                        case None                           => 0 // null-default-initialization for minimal exec-size (since the value of an undefined variable is undefined)
+                        case _                              => throw TacEmitterError("Initializer element is not a compile-time constant.")
+                    }
+                    topItems.append(Tac.StaticVariable(v.name, isGlobal(v.linkage), initInt))
+                }
+                case _: Typed.Declaration => ()
+            }
+        })
+        Tac.Program(topItems.toList)
     }
 }

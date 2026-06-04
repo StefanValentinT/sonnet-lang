@@ -7,6 +7,7 @@ import pprint.pprintln
 
 class Token
 
+case class KwPrivate()  extends Token
 case class KwFor()      extends Token
 case class KwVal()      extends Token
 case class KwVar()      extends Token
@@ -90,6 +91,7 @@ class Tokenizer(input: String) {
     private var precomputedToken: Option[Token] = None
 
     private val rawPatterns: List[(MatchPattern, String => Token)] = List(
+      (Word("private"), _ => KwFor()),
       (Word("for"), _ => KwFor()),
       (Word("val"), _ => KwVal()),
       (Word("var"), _ => KwVar()),

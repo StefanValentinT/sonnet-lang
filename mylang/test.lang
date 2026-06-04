@@ -1,7 +1,13 @@
 pow : (i32, i32) -> i32;
 print_i32 : (i32) -> i32;
 
-fun main() i32 print_i32(pow(2,16));
+x: i32;
+
+fun main() i32 {
+	x = 10;
+	print_i32(pow(2,x));
+	0
+};
 
 fun pow(base: i32, exp: i32) i32 {
 	var counter : i32 = 0;
@@ -12,3 +18,5 @@ fun pow(base: i32, exp: i32) i32 {
 	};
 	res
 };
+
+var x : i32;

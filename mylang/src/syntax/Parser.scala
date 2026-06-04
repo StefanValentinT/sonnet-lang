@@ -16,10 +16,25 @@ class Parser(tokenizer: Tokenizer) {
     def parse(): Program = {
         val items = new ListBuffer[TopLevelItem]()
         while (tokenizer.peek().isDefined) {
+            val linkage = tokenizer.peek() match {
+                case Some(KwPrivate()) =>
+                    tokenizer.consume()
+                    Linkage.Private
+                case _ =>
+                    Linkage.Public
+            }
             tokenizer.peek() match {
-                case Some(KwFun())     => items += parseFunctionDef()
-                case Some(TokIdent(_)) => items += parseDeclaration()
-                case Some(other)       => throw ParserError(s"Expected function or top-level declaration, got: $other")
+                case Some(KwFun()) =>
+                    items += parseFunctionDef(linkage)
+                case Some(KwVar()) =>
+                    items += parseGlobalVarDeclaration(linkage)
+                case Some(TokIdent(_)) =>
+                    if (linkage == Linkage.Private) {
+                        throw ParserError("Declarations can not have a linkage modifier.")
+                    }
+                    items += parseDeclaration()
+                case Some(other) =>
+                    throw ParserError(s"Expected function or top-level declaration, got: $other")
             }
             expect(OpSemicolon())
         }
@@ -29,26 +44,11 @@ class Parser(tokenizer: Tokenizer) {
     def parseDeclaration(): Declaration = {
         val name = expect[TokIdent].value
         expect(OpColon())
-        expect(LParen())
-
-        var argCount = 0
-        if (tokenizer.peek() != Some(RParen())) {
-            expect(KwI32())
-            argCount += 1
-            while (tokenizer.peek() == Some(OpComma())) {
-                tokenizer.consume()
-                expect(KwI32())
-                argCount += 1
-            }
-        }
-        expect(RParen())
-        expect(OpArrow())
-        expect(KwI32())
-
-        Declaration(name, argCount)
+        val typ = parseType()
+        Declaration(name, typ)
     }
 
-    def parseFunctionDef(): FunctionDef = {
+    def parseFunctionDef(linkage: Linkage): FunctionDef = {
         expect(KwFun())
         val name = expect[TokIdent].value
         expect(LParen())
@@ -69,7 +69,25 @@ class Parser(tokenizer: Tokenizer) {
         expect(RParen())
         expect(KwI32())
         val expr = parseExpression(0)
-        FunctionDef(name, params.toList, expr)
+        FunctionDef(name, params.toList, expr, linkage)
+    }
+
+    def parseGlobalVarDeclaration(linkage: Linkage): GlobalVarDeclaration = {
+        expect(KwVar())
+        val name = expect[TokIdent].value
+        expect(OpColon())
+        expect(KwI32())
+        val init = tokenizer.peek() match {
+            case Some(OpAssign()) => {
+                tokenizer.consume()
+                val init = parseExpression(0)
+                Some(init)
+            }
+            case _ => {
+                None
+            }
+        }
+        GlobalVarDeclaration(name, init, linkage)
     }
 
     def parseBlock(): Block = {
@@ -120,14 +138,40 @@ class Parser(tokenizer: Tokenizer) {
             case Some(OpAssign()) => {
                 tokenizer.consume()
                 val init = parseExpression(0)
-                VarDeclaration(Var(name), Some(init))
+                VarDeclaration(name, Some(init))
             }
             case _ => {
-                VarDeclaration(Var(name), None)
+                VarDeclaration(name, None)
             }
         }
         decl
     }
+
+    def parseType(): Type =
+        tokenizer.peek() match {
+            case Some(KwI32()) => {
+                tokenizer.consume()
+                I32()
+            }
+            case Some(LParen()) => {
+                tokenizer.consume()
+                var argCount = 0
+                if (tokenizer.peek() != Some(RParen())) {
+                    expect(KwI32())
+                    argCount += 1
+                    while (tokenizer.peek() == Some(OpComma())) {
+                        tokenizer.consume()
+                        expect(KwI32())
+                        argCount += 1
+                    }
+                }
+                expect(RParen())
+                expect(OpArrow())
+                expect(KwI32())
+                FunType(argCount)
+            }
+            case _ => throw ParserError("Invalid type.")
+        }
 
     def precedence(t: Token): Int = t match {
         case OpAssign() | OpAddAssign() | OpSubAssign() | OpMulAssign() | OpDivAssign() | OpRemAssign() | OpAndAssign() | OpOrAssign() | OpBitAndAssign() | OpBitOrAssign() | OpBitXorAssign() | OpLShiftAssign() | OpRShiftAssign() => 10

@@ -36,13 +36,13 @@ object App {
                 pprintln(ast)
                 val fixedAst   = VariableResolver.resolveProgram(ast)
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
-                TypeChecker.typecheckProgram(labeledAst)
-                pprintln(labeledAst)
-                val tacAst = TacEmitter(labeledAst).emitProgramTac()
+                val typedAst   = TypeChecker.typecheckProgram(labeledAst)
+                pprintln(typedAst)
+                val tacAst = TacEmitter(typedAst).emitProgramTac()
                 pprintln(tacAst)
 
                 var asmAst = codegenProgram(tacAst)
-                asmAst = PseudoRegisterReplacer().inProgram(asmAst)
+                asmAst = PseudoRegisterReplacer.inProgram(asmAst)
                 pprintln(asmAst)
 
                 val asmString = Emitter().emitProgram(asmAst)

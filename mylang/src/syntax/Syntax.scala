@@ -5,23 +5,19 @@ import collection.mutable.Map
 case class Program(items: List[TopLevelItem])
 
 abstract sealed class TopLevelItem
-case class Declaration(name: String, argCount: Int)                          extends TopLevelItem
-case class FunctionDef(name: String, params: List[String], body: Expression) extends TopLevelItem
+case class Declaration(name: String, typ: Type)                                                extends TopLevelItem
+case class FunctionDef(name: String, params: List[String], body: Expression, linkage: Linkage) extends TopLevelItem
+case class GlobalVarDeclaration(name: String, init: Option[Expression], linkage: Linkage)      extends TopLevelItem
+
+enum Linkage {
+    case Public, Private
+}
 
 abstract sealed class Statement
-case class VarDeclaration(name: Var, init: Option[Expression]) extends Statement
-case class ExpressionStmt(exp: Expression)                     extends Statement
+case class VarDeclaration(name: String, init: Option[Expression]) extends Statement
+case class ExpressionStmt(exp: Expression)                        extends Statement
 
-abstract sealed class Expression {
-    private var typ: Option[Type] = None
-    def setType(newType: Type): Unit = {
-        typ = Some(newType)
-    }
-    def optType: Option[Type] = typ
-    def getType: Type = typ.getOrElse(
-      throw new IllegalStateException(s"AST node $this has no type!")
-    )
-}
+abstract sealed class Expression
 case class Constant(value: Int)                                                         extends Expression
 case class Var(name: String)                                                            extends Expression
 case class Unary(op: UnaryOp, exp: Expression)                                          extends Expression

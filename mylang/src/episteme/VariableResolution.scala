@@ -21,8 +21,9 @@ object VariableResolver {
     def resolveProgram(p: Program): Program = {
         val globalVariableMap = Map[String, MapEntry]()
         val resolvedItems = p.items.map {
-            case d: Declaration => resolveGlobalDeclaration(d, globalVariableMap)
-            case f: FunctionDef => resolveFunctionDef(f, globalVariableMap)
+            case d: Declaration          => resolveGlobalDeclaration(d, globalVariableMap)
+            case f: FunctionDef          => resolveFunctionDef(f, globalVariableMap)
+            case v: GlobalVarDeclaration => resolveGlobalVarDeclaration(v, globalVariableMap)
         }
         Program(resolvedItems)
     }
@@ -36,6 +37,19 @@ object VariableResolver {
         }
         variableMap.put(decl.name, MapEntry(decl.name, true, true))
         decl
+    }
+
+    def resolveGlobalVarDeclaration(v: GlobalVarDeclaration, variableMap: Map[String, MapEntry]): GlobalVarDeclaration = {
+        if (variableMap.contains(v.name)) {
+            val prevEntry = variableMap(v.name)
+            if (prevEntry.fromCurrentBlock && !prevEntry.hasLinkage) {
+                throw EpistemicError(s"Duplicate declaration of global variable: ${v.name}")
+            }
+        }
+        variableMap.put(v.name, MapEntry(v.name, true, true))
+        val resolvedInit = v.init.map(e => resolveExpression(e, variableMap))
+
+        GlobalVarDeclaration(v.name, resolvedInit, v.linkage)
     }
 
     def resolveFunctionDef(f: FunctionDef, variableMap: Map[String, MapEntry]): FunctionDef = {
@@ -60,14 +74,13 @@ object VariableResolver {
         }
 
         val resolvedBody = resolveExpression(f.body, innerMap)
-        FunctionDef(f.name, resolvedParams.toList, resolvedBody)
+        FunctionDef(f.name, resolvedParams.toList, resolvedBody, f.linkage)
     }
 
     def resolveStatement(stmt: Statement, variableMap: Map[String, MapEntry]): Statement = {
         stmt match {
             case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp, variableMap))
-            case VarDeclaration(vNode, init) => {
-                val name = vNode.name
+            case VarDeclaration(name, init) => {
                 if (variableMap.contains(name) && variableMap(name).fromCurrentBlock) {
                     throw EpistemicError(s"Duplicate variable declaration: $name")
                 }
@@ -75,7 +88,7 @@ object VariableResolver {
                 variableMap.put(name, MapEntry(uniqueName, true, false))
 
                 val resolvedInit = init.map(e => resolveExpression(e, variableMap))
-                VarDeclaration(Var(uniqueName), resolvedInit)
+                VarDeclaration(uniqueName, resolvedInit)
             }
         }
     }

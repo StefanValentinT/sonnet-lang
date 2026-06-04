@@ -6,14 +6,43 @@ class Emitter() {
     def inst(s: String) = sb.append("    ").append(s)
 
     def emitProgram(p: Asm.Program): String = {
+        val staticVars                     = p.items.collect { case v: Asm.StaticVariable => v }
+        val (initialized, zeroInitialized) = staticVars.partition(_.init != 0)
+
+        if (initialized.nonEmpty) {
+            sb.append(".data\n")
+            initialized.foreach(v => {
+                if (v.isGlobal) {
+                    sb.append(s".global _${v.name}\n")
+                }
+                sb.append(".p2align 2\n")
+                sb.append(s"_${v.name}:\n")
+                sb.append(s"    .word ${v.init}\n\n")
+            })
+        }
+        if (zeroInitialized.nonEmpty) {
+            sb.append(".bss\n")
+            zeroInitialized.foreach(v => {
+                if (v.isGlobal) {
+                    sb.append(s".global _${v.name}\n")
+                }
+                sb.append(".p2align 2\n")
+                sb.append(s"_${v.name}:\n")
+                sb.append(s"    .space 4\n\n")
+            })
+        }
+
         sb.append(".text\n")
-        p.items.foreach(emitFunction)
+        p.items.foreach {
+            case f: Asm.FunctionDef => emitFunction(f)
+            case _                  => ()
+        }
         sb.toString()
     }
 
     def emitFunction(f: Asm.FunctionDef) = {
         val n = f.name
-        sb.append(s".global _$n\n")
+        if f.isGlobal then sb.append(s".global _$n\n")
         sb.append(".p2align 2\n")
         sb.append(s"_$n:\n")
         inst("stp x29, x30, [sp, #-16]!\n")
@@ -26,9 +55,19 @@ class Emitter() {
 
     def emitInstruction(i: Asm.Instruction) = i match {
         case Asm.AllocateStack(size) => inst(s"sub sp, sp, #${pad16(size)}")
-        case Asm.Load(src, dest)     => inst(s"ldr ${showOp(dest)}, ${showOp(src)}")
-        case Asm.Store(src, dest)    => inst(s"str ${showOp(src)}, ${showOp(dest)}")
-        case Asm.Mov(src, dest)      => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
+
+        case Asm.Adrp(destReg, label) =>
+            inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE")
+        case Asm.LoadData(data, baseReg, destReg) =>
+            inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
+            inst(s"ldr ${showOp(destReg)}, [${showOp(baseReg)}]")
+        case Asm.StoreData(srcReg, data, baseReg) =>
+            inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
+            inst(s"str ${showOp(srcReg)}, [${showOp(baseReg)}]")
+
+        case Asm.Load(Asm.StackSlot(offset), dest) => inst(s"ldr ${showOp(dest)}, [x29, #$offset]")
+        case Asm.Store(src, Asm.StackSlot(offset)) => inst(s"str ${showOp(src)}, [x29, #$offset]")
+        case Asm.Mov(src, dest)                    => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
         case Asm.Ret() => {
             inst("mov sp, x29\n")
             inst("ldp x29, x30, [sp], #16\n")
@@ -104,6 +143,19 @@ class Emitter() {
         case Asm.Register(Asm.Reg.W10) => "w10"
         case Asm.Register(Asm.Reg.W11) => "w11"
         case Asm.Register(Asm.Reg.WZR) => "wzr"
+        case Asm.Register(Asm.Reg.X0)  => "x0"
+        case Asm.Register(Asm.Reg.X1)  => "x1"
+        case Asm.Register(Asm.Reg.X2)  => "x2"
+        case Asm.Register(Asm.Reg.X3)  => "x3"
+        case Asm.Register(Asm.Reg.X4)  => "x4"
+        case Asm.Register(Asm.Reg.X5)  => "x5"
+        case Asm.Register(Asm.Reg.X6)  => "x6"
+        case Asm.Register(Asm.Reg.X7)  => "x7"
+        case Asm.Register(Asm.Reg.X9)  => "x9"
+        case Asm.Register(Asm.Reg.X10) => "x10"
+        case Asm.Register(Asm.Reg.X11) => "x11"
+        case Asm.Register(Asm.Reg.XZR) => "xzr"
+        case Asm.Register(Asm.Reg.X30) => "x30"
         case _                         => throw new RuntimeException(s"Unexpected operand type: $o")
     }
 

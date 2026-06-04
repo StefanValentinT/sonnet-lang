@@ -1,8 +1,10 @@
 pow : (i32, i32) -> i32;
 print_i32 : (i32) -> i32;
 
+var power : i32 = 4;
+
 fun main() i32 {
-	print_i32(pow(2,4));
+	print_i32(pow(2,power));
 	0
 };
 

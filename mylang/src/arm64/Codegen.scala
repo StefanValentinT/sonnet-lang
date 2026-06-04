@@ -3,8 +3,13 @@ package arm64
 import tac.Tac
 import scala.collection.mutable.{Map, ListBuffer}
 
-def codegenProgram(p: Tac.Program): Asm.Program =
-    Asm.Program(p.items.map(codegenFunction))
+def codegenProgram(p: Tac.Program): Asm.Program = {
+    val items = p.items.map {
+        case f: Tac.FunctionDef    => codegenFunction(f)
+        case v: Tac.StaticVariable => Asm.StaticVariable(v.name, v.isGlobal, v.init)
+    }
+    Asm.Program(items)
+}
 
 def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
     val paramRegisters = List(Asm.Reg.W0, Asm.Reg.W1, Asm.Reg.W2, Asm.Reg.W3, Asm.Reg.W4, Asm.Reg.W5, Asm.Reg.W6, Asm.Reg.W7)
@@ -22,7 +27,7 @@ def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
     }
 
     val asmInstructions = paramMoves ++ f.body.flatMap(codegenInstruction)
-    Asm.FunctionDef(f.name, asmInstructions)
+    Asm.FunctionDef(f.name, f.isGlobal, asmInstructions)
 }
 
 def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match {
@@ -157,46 +162,125 @@ private def isRelationalOp(op: Tac.BinaryOp): Boolean = op match {
     case _                                                                                                                                                      => false
 }
 
-class PseudoRegisterReplacer {
+object PseudoRegisterReplacer {
+    private var globalSymbols = Map[String, Boolean]()
 
     private val stackMap      = Map[String, Int]()
     private var currentOffset = 0
 
     // Ensures that an operand is in a register.
-    // If that is not the case it is loaded into the egister specified by the second parameter.
+    // If that is not the case it is loaded into the register specified by the second parameter.
     // It modifies the ListBuffer it receives to contain the instructions necessary to load
     // and returns a register operand that contains the operand.
     private def ensureReg(op: Asm.Operand, scratch: Asm.Reg, instr: ListBuffer[Asm.Instruction]): Asm.Register = op match {
         case r: Asm.Register => r
-        case slot: Asm.StackSlot => {
+        case slot: Asm.StackSlot =>
             instr += Asm.Load(slot, Asm.Register(scratch))
             Asm.Register(scratch)
-        }
-        case imm: Asm.Imm => {
+        case data: Asm.Data =>
+            val scratch64 = scratch match {
+                case Asm.Reg.W9  => Asm.Register(Asm.Reg.X9)
+                case Asm.Reg.W10 => Asm.Register(Asm.Reg.X10)
+                case Asm.Reg.W11 => Asm.Register(Asm.Reg.X11)
+                case _           => throw new RuntimeException(s"No 64-bit address mapping for scratch register $scratch")
+            }
+            instr += Asm.Adrp(scratch64, data.location)
+            instr += Asm.LoadData(data, scratch64, Asm.Register(scratch))
+            Asm.Register(scratch)
+        case imm: Asm.Imm =>
             instr += Asm.Mov(imm, Asm.Register(scratch))
             Asm.Register(scratch)
-        }
         case _ => throw new RuntimeException("Unexpected operand")
     }
 
     def inProgram(p: Asm.Program): Asm.Program = {
-        val newFuns = p.items.map(replaceInFunction)
-        Asm.Program(newFuns)
+        p.items.foreach {
+            case v: Asm.StaticVariable => globalSymbols.put(v.name, v.isGlobal)
+            case _                     => ()
+        }
+        val newItems = p.items.map {
+            case f: Asm.FunctionDef            => replaceInFunction(f)
+            case staticVar: Asm.StaticVariable => staticVar
+        }
+        Asm.Program(newItems)
     }
 
     private def replaceOperand(op: Asm.Operand): Asm.Operand = {
         op match {
             case Asm.PseudoReg(name) => {
-                stackMap.get(name) match {
-                    case Some(offset) => Asm.StackSlot(offset)
-                    case None => {
-                        currentOffset -= 4
-                        stackMap.put(name, currentOffset)
-                        Asm.StackSlot(currentOffset)
+                if (globalSymbols.getOrElse(name, false)) {
+                    Asm.Data(name)
+                } else {
+                    stackMap.get(name) match {
+                        case Some(offset) => Asm.StackSlot(offset)
+                        case None => {
+                            currentOffset -= 4
+                            stackMap.put(name, currentOffset)
+                            Asm.StackSlot(currentOffset)
+                        }
                     }
                 }
             }
             case other => other
+        }
+    }
+
+    // fix the mov instruction to operate on registers and stackslots
+    private def expandMov(src: Asm.Operand, dest: Asm.Operand): List[Asm.Instruction] = {
+        val newSrc  = replaceOperand(src)
+        val newDest = replaceOperand(dest)
+
+        (newSrc, newDest) match {
+            case (srcMem, destMem)
+                if (srcMem.isInstanceOf[Asm.StackSlot] || srcMem.isInstanceOf[Asm.Data]) &&
+                    (destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data]) =>
+                val buffer = ListBuffer[Asm.Instruction]()
+                val regS   = ensureReg(srcMem, Asm.Reg.W9, buffer)
+                if (destMem.isInstanceOf[Asm.StackSlot]) {
+                    buffer += Asm.Store(regS, destMem.asInstanceOf[Asm.StackSlot])
+                } else {
+                    val d = destMem.asInstanceOf[Asm.Data]
+                    buffer += Asm.Adrp(Asm.Register(Asm.Reg.X9), d.location)
+                    buffer += Asm.StoreData(regS, d, Asm.Register(Asm.Reg.X9))
+                }
+                buffer.toList
+
+            case (imm: Asm.Imm, destMem) if destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data] =>
+                val buffer = ListBuffer[Asm.Instruction]()
+                buffer += Asm.Mov(imm, Asm.Register(Asm.Reg.W9))
+
+                if (destMem.isInstanceOf[Asm.StackSlot]) {
+                    buffer += Asm.Store(Asm.Register(Asm.Reg.W9), destMem.asInstanceOf[Asm.StackSlot])
+                } else {
+                    val d = destMem.asInstanceOf[Asm.Data]
+                    buffer += Asm.Adrp(Asm.Register(Asm.Reg.X10), d.location)
+                    buffer += Asm.StoreData(Asm.Register(Asm.Reg.W9), d, Asm.Register(Asm.Reg.X10))
+                }
+                buffer.toList
+
+            case (data: Asm.Data, regDest: Asm.Register) =>
+                val reg64 = regDest.reg match {
+                    case Asm.Reg.W0 => Asm.Register(Asm.Reg.X9)
+                    case other      => Asm.Register(other.to64)
+                }
+                List(
+                  Asm.Adrp(reg64, data.location),
+                  Asm.LoadData(data, reg64, regDest)
+                )
+
+            case (slot: Asm.StackSlot, regDest: Asm.Register) =>
+                List(Asm.Load(slot, regDest))
+
+            case (regSrc: Asm.Register, data: Asm.Data) =>
+                List(
+                  Asm.Adrp(Asm.Register(Asm.Reg.X9), data.location),
+                  Asm.StoreData(regSrc, data, Asm.Register(Asm.Reg.X9))
+                )
+            case (regSrc: Asm.Register, slot: Asm.StackSlot) =>
+                List(Asm.Store(regSrc, slot))
+
+            case _ =>
+                List(Asm.Mov(newSrc, newDest))
         }
     }
 
@@ -206,34 +290,7 @@ class PseudoRegisterReplacer {
 
         var newInstructions = f.instructions.flatMap {
             {
-                case Asm.Mov(src, dest) => {
-                    val newSrc  = replaceOperand(src)
-                    val newDest = replaceOperand(dest)
-
-                    (newSrc, newDest) match {
-                        case (srcSlot: Asm.StackSlot, destSlot: Asm.StackSlot) => {
-                            List(
-                              Asm.Load(srcSlot, Asm.Register(Asm.Reg.W9)),
-                              Asm.Store(Asm.Register(Asm.Reg.W9), destSlot)
-                            )
-                        }
-                        case (srcSlot: Asm.StackSlot, regDest: Asm.Register) => {
-                            List(Asm.Load(srcSlot, regDest))
-                        }
-                        case (regSrc: Asm.Register, destSlot: Asm.StackSlot) => {
-                            List(Asm.Store(regSrc, destSlot))
-                        }
-                        case (imm: Asm.Imm, destSlot: Asm.StackSlot) => {
-                            List(
-                              Asm.Mov(imm, Asm.Register(Asm.Reg.W9)),
-                              Asm.Store(Asm.Register(Asm.Reg.W9), destSlot)
-                            )
-                        }
-                        case _ => {
-                            List(Asm.Mov(newSrc, newDest))
-                        }
-                    }
-                }
+                case Asm.Mov(src, dest) => expandMov(src, dest)
                 case Asm.Unary(op, operand) => {
                     val newOperand = replaceOperand(operand)
 
@@ -338,6 +395,6 @@ class PseudoRegisterReplacer {
             newInstructions = Asm.AllocateStack(alignedBytes) :: newInstructions
         }
 
-        Asm.FunctionDef(f.name, newInstructions)
+        Asm.FunctionDef(f.name, f.isGlobal, newInstructions)
     }
 }
