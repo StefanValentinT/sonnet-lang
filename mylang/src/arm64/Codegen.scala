@@ -20,8 +20,7 @@ def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
         } else {
             val incomingOffset = (index - 8) * 8
             List(
-              Asm.Load(Asm.StackSlot(incomingOffset), Asm.Register(Asm.Reg.W9)),
-              Asm.Mov(Asm.Register(Asm.Reg.W9), Asm.PseudoReg(paramName))
+              Asm.Mov(Asm.StackSlot(incomingOffset), Asm.PseudoReg(paramName))
             )
         }
     }
@@ -239,9 +238,10 @@ object PseudoRegisterReplacer {
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
                     buffer += Asm.Store(regS, destMem.asInstanceOf[Asm.StackSlot])
                 } else {
-                    val d = destMem.asInstanceOf[Asm.Data]
-                    buffer += Asm.Adrp(Asm.Register(Asm.Reg.X9), d.location)
-                    buffer += Asm.StoreData(regS, d, Asm.Register(Asm.Reg.X9))
+                    val d              = destMem.asInstanceOf[Asm.Data]
+                    val scratchAddrReg = if (regS.reg == Asm.Reg.W9) Asm.Reg.X10 else Asm.Reg.X9
+                    buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
+                    buffer += Asm.StoreData(regS, d, Asm.Register(scratchAddrReg))
                 }
                 buffer.toList
 
@@ -259,23 +259,22 @@ object PseudoRegisterReplacer {
                 buffer.toList
 
             case (data: Asm.Data, regDest: Asm.Register) =>
-                val reg64 = regDest.reg match {
-                    case Asm.Reg.W0 => Asm.Register(Asm.Reg.X9)
-                    case other      => Asm.Register(other.to64)
-                }
+                val scratchPtr = if (regDest.reg == Asm.Reg.W9 || regDest.reg == Asm.Reg.X9) Asm.Reg.X10 else Asm.Reg.X9
                 List(
-                  Asm.Adrp(reg64, data.location),
-                  Asm.LoadData(data, reg64, regDest)
+                  Asm.Adrp(Asm.Register(scratchPtr), data.location),
+                  Asm.LoadData(data, Asm.Register(scratchPtr), regDest)
                 )
 
             case (slot: Asm.StackSlot, regDest: Asm.Register) =>
                 List(Asm.Load(slot, regDest))
 
             case (regSrc: Asm.Register, data: Asm.Data) =>
+                val scratchPtr = if (regSrc.reg == Asm.Reg.W9 || regSrc.reg == Asm.Reg.X9) Asm.Reg.X10 else Asm.Reg.X9
                 List(
-                  Asm.Adrp(Asm.Register(Asm.Reg.X9), data.location),
-                  Asm.StoreData(regSrc, data, Asm.Register(Asm.Reg.X9))
+                  Asm.Adrp(Asm.Register(scratchPtr), data.location),
+                  Asm.StoreData(regSrc, data, Asm.Register(scratchPtr))
                 )
+
             case (regSrc: Asm.Register, slot: Asm.StackSlot) =>
                 List(Asm.Store(regSrc, slot))
 

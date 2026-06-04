@@ -3,9 +3,30 @@ print_i32 : (i32) -> i32;
 
 x: i32;
 
+fun impure() i32 {
+	x += 1; 0
+};
+
+fun crunch(a: i32, b: i32) i32
+	(a + b) * (a - b) + (a * b) - (a + 1)
+;
+
+var g1: i32;
+var g2: i32;
+
+fun test_globals() i32 {
+	g1 = 42;
+	g2 = g1;
+	print_i32(g2);
+	0
+};
+
 fun main() i32 {
 	x = 10;
+	impure();
 	print_i32(pow(2,x));
+	print_i32(crunch(2,4));
+	test_globals();
 	0
 };
 
