@@ -53,30 +53,31 @@ class Parser(tokenizer: Tokenizer) {
         val name = expect[TokIdent].value
         expect(LParen())
 
-        val params = new ListBuffer[String]()
+        val params     = new ListBuffer[String]()
+        val paramTypes = new ListBuffer[Type]()
         if (tokenizer.peek() != Some(RParen())) {
             params += expect[TokIdent].value
             expect(OpColon())
-            expect(KwI32())
+            paramTypes += parseType()
             while (tokenizer.peek() == Some(OpComma())) {
                 tokenizer.consume()
                 params += expect[TokIdent].value
                 expect(OpColon())
-                expect(KwI32())
+                paramTypes += parseType()
             }
         }
 
         expect(RParen())
-        expect(KwI32())
-        val expr = parseExpression(0)
-        FunctionDef(name, params.toList, expr, linkage)
+        val returnType = parseType()
+        val expr       = parseExpression(0)
+        FunctionDef(name, params.toList, FunType(paramTypes.toList, returnType), expr, linkage)
     }
 
     def parseGlobalVarDeclaration(linkage: Linkage): GlobalVarDeclaration = {
         expect(KwVar())
         val name = expect[TokIdent].value
         expect(OpColon())
-        expect(KwI32())
+        val typ = parseType()
         val init = tokenizer.peek() match {
             case Some(OpAssign()) => {
                 tokenizer.consume()
@@ -87,7 +88,7 @@ class Parser(tokenizer: Tokenizer) {
                 None
             }
         }
-        GlobalVarDeclaration(name, init, linkage)
+        GlobalVarDeclaration(name, typ, init, linkage)
     }
 
     def parseBlock(): Block = {
@@ -132,43 +133,47 @@ class Parser(tokenizer: Tokenizer) {
         expect(KwVar())
         val name = expect[TokIdent].value
         expect(OpColon())
-        expect(KwI32())
+        val typ = parseType()
 
-        val decl = tokenizer.peek() match {
+        val init = tokenizer.peek() match {
             case Some(OpAssign()) => {
                 tokenizer.consume()
                 val init = parseExpression(0)
-                VarDeclaration(name, Some(init))
+                Some(init)
             }
             case _ => {
-                VarDeclaration(name, None)
+                None
             }
         }
-        decl
+        VarDeclaration(name, typ, init)
     }
 
     def parseType(): Type =
-        tokenizer.peek() match {
+        tokenizer.next() match {
             case Some(KwI32()) => {
-                tokenizer.consume()
                 I32()
             }
+            case Some(KwI64()) => {
+                I64()
+            }
             case Some(LParen()) => {
-                tokenizer.consume()
-                var argCount = 0
+                val params = new ListBuffer[Type]()
+
                 if (tokenizer.peek() != Some(RParen())) {
-                    expect(KwI32())
-                    argCount += 1
+                    params += parseType()
+
                     while (tokenizer.peek() == Some(OpComma())) {
                         tokenizer.consume()
-                        expect(KwI32())
-                        argCount += 1
+                        params += parseType()
                     }
                 }
+
                 expect(RParen())
                 expect(OpArrow())
-                expect(KwI32())
-                FunType(argCount)
+
+                val returnType = parseType()
+
+                FunType(params.toList, returnType)
             }
             case _ => throw ParserError("Invalid type.")
         }
@@ -193,6 +198,7 @@ class Parser(tokenizer: Tokenizer) {
         case OpRem()                                                                                                                                                                                                                 => 80
         case OpMul()                                                                                                                                                                                                                 => 80
         case OpDiv()                                                                                                                                                                                                                 => 80
+        case OpAs()                                                                                                                                                                                                                  => 85
     }
 
     def parseExpression(minPrec: Int): Expression = {
@@ -207,8 +213,10 @@ class Parser(tokenizer: Tokenizer) {
 
             val opToken = tokenizer.next().get
             val cPrec   = precedence(opToken)
-
-            if (cPrec == 10) { // it is an assignment
+            if (opToken == OpAs()) {
+                val targetType = parseType()
+                left = Cast(left, targetType)
+            } else if (cPrec == 10) { // it is an assignment
                 // right-assoicative meaning a = b = c is possible
                 val right = parseExpression(cPrec)
 
@@ -266,7 +274,8 @@ class Parser(tokenizer: Tokenizer) {
     def parseFactor(): Expression = {
         tokenizer.next() match {
             case Some(LBrace())         => parseBlock()
-            case Some(TokIntLit(value)) => Constant(value)
+            case Some(TokI32Lit(value)) => Constant(Const.I32Lit(value))
+            case Some(TokI64Lit(value)) => Constant(Const.I64Lit(value))
             case Some(KwIf()) => {
                 val cond = parseExpression(0)
                 expect(KwThen())
@@ -332,8 +341,8 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def isBinaryOperator(t: Token): Boolean = t match {
-        case OpPlus() | OpMinus() | OpMul() | OpDiv() | OpRem() | OpAnd() | OpOr() | OpEqual() | OpNotEqual() | OpGreaterThan() | OpLessThan() | OpLessOrEqual() | OpGreaterOrEqual() | OpAssign() | OpBitAnd() | OpBitOr() | OpBitXor() | OpLShift() | OpRShift() | OpAddAssign() | OpSubAssign() | OpMulAssign() | OpDivAssign() | OpRemAssign() | OpAndAssign() | OpOrAssign() | OpBitAndAssign() | OpBitOrAssign() | OpBitXorAssign() | OpLShiftAssign() | OpRShiftAssign() => true
-        case _                                                                                                                                                                                                                                                                                                                                                                                                                                                                  => false
+        case OpAs() | OpPlus() | OpMinus() | OpMul() | OpDiv() | OpRem() | OpAnd() | OpOr() | OpEqual() | OpNotEqual() | OpGreaterThan() | OpLessThan() | OpLessOrEqual() | OpGreaterOrEqual() | OpAssign() | OpBitAnd() | OpBitOr() | OpBitXor() | OpLShift() | OpRShift() | OpAddAssign() | OpSubAssign() | OpMulAssign() | OpDivAssign() | OpRemAssign() | OpAndAssign() | OpOrAssign() | OpBitAndAssign() | OpBitOrAssign() | OpBitXorAssign() | OpLShiftAssign() | OpRShiftAssign() => true
+        case _                                                                                                                                                                                                                                                                                                                                                                                                                                                                           => false
     }
 
     def expect[T <: Token](using tag: ClassTag[T]): T = {

@@ -45,7 +45,7 @@ object Tac {
 class TacEmitterError(detail: String) extends CompilerError("Three-address-code generator", detail)
 
 class TacEmitter(prog: Typed.Program) {
-
+    /*
     private var tempCounter  = 0
     private var labelCounter = 0
     private val instructions = ListBuffer[Tac.Instruction]()
@@ -254,5 +254,5 @@ class TacEmitter(prog: Typed.Program) {
             }
         })
         Tac.Program(topItems.toList)
-    }
+    }*/
 }

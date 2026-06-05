@@ -49,7 +49,7 @@ object VariableResolver {
         variableMap.put(v.name, MapEntry(v.name, true, true))
         val resolvedInit = v.init.map(e => resolveExpression(e, variableMap))
 
-        GlobalVarDeclaration(v.name, resolvedInit, v.linkage)
+        GlobalVarDeclaration(v.name, v.typ, resolvedInit, v.linkage)
     }
 
     def resolveFunctionDef(f: FunctionDef, variableMap: Map[String, MapEntry]): FunctionDef = {
@@ -74,13 +74,13 @@ object VariableResolver {
         }
 
         val resolvedBody = resolveExpression(f.body, innerMap)
-        FunctionDef(f.name, resolvedParams.toList, resolvedBody, f.linkage)
+        FunctionDef(f.name, resolvedParams.toList, f.typ, resolvedBody, f.linkage)
     }
 
     def resolveStatement(stmt: Statement, variableMap: Map[String, MapEntry]): Statement = {
         stmt match {
             case ExpressionStmt(exp) => ExpressionStmt(resolveExpression(exp, variableMap))
-            case VarDeclaration(name, init) => {
+            case VarDeclaration(name, typ, init) => {
                 if (variableMap.contains(name) && variableMap(name).fromCurrentBlock) {
                     throw EpistemicError(s"Duplicate variable declaration: $name")
                 }
@@ -88,7 +88,7 @@ object VariableResolver {
                 variableMap.put(name, MapEntry(uniqueName, true, false))
 
                 val resolvedInit = init.map(e => resolveExpression(e, variableMap))
-                VarDeclaration(uniqueName, resolvedInit)
+                VarDeclaration(uniqueName, typ, resolvedInit)
             }
         }
     }
@@ -107,6 +107,7 @@ object VariableResolver {
             case If(cond, thenB, elseB) => If(resolveExpression(cond, variableMap), resolveExpression(thenB, variableMap), if elseB.isDefined then Some(resolveExpression(elseB.get, variableMap)) else None)
             case Constant(value)        => Constant(value)
             case Unary(op, e)           => Unary(op, resolveExpression(e, variableMap))
+            case Cast(exp, typ)         => Cast(resolveExpression(exp, variableMap), typ)
             case Return(exp)            => Return(resolveExpression(exp, variableMap))
             case Binary(op, exp1, exp2) => Binary(op, resolveExpression(exp1, variableMap), resolveExpression(exp2, variableMap))
             case Var(value) => {

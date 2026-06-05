@@ -25,11 +25,11 @@ object LoopLabeler {
     }
 
     def labelFunctionDef(f: FunctionDef): FunctionDef = {
-        FunctionDef(f.name, f.params, labelExpression(f.body, None), f.linkage)
+        FunctionDef(f.name, f.params, f.typ, labelExpression(f.body, None), f.linkage)
     }
     def labelGlobalVarDeclaration(v: GlobalVarDeclaration): GlobalVarDeclaration = {
         val labeledInit = v.init.map(e => labelExpression(e, None))
-        GlobalVarDeclaration(v.name, labeledInit, v.linkage)
+        GlobalVarDeclaration(v.name, v.typ, labeledInit, v.linkage)
     }
 
     def labelStatement(stmt: Statement, currentLabel: Option[String]): Statement = {
@@ -37,12 +37,12 @@ object LoopLabeler {
             case ExpressionStmt(exp) =>
                 ExpressionStmt(labelExpression(exp, currentLabel))
 
-            case VarDeclaration(vNode, Some(initExp)) =>
+            case VarDeclaration(vNode, typ, Some(initExp)) =>
                 val labeledInit = labelExpression(initExp, currentLabel)
-                VarDeclaration(vNode, Some(labeledInit))
+                VarDeclaration(vNode, typ, Some(labeledInit))
 
-            case VarDeclaration(vNode, None) =>
-                VarDeclaration(vNode, None)
+            case VarDeclaration(vNode, typ, None) =>
+                VarDeclaration(vNode, typ, None)
         }
     }
 

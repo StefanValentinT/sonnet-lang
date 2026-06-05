@@ -38,7 +38,7 @@ object App {
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
                 val typedAst   = TypeChecker.typecheckProgram(labeledAst)
                 pprintln(typedAst)
-                val tacAst = TacEmitter(typedAst).emitProgramTac()
+                /*val tacAst = TacEmitter(typedAst).emitProgramTac()
                 pprintln(tacAst)
 
                 var asmAst = codegenProgram(tacAst)
@@ -47,7 +47,7 @@ object App {
 
                 val asmString = Emitter().emitProgram(asmAst)
                 println(asmString)
-                FileWriter.writeFile(filename, asmString)
+                FileWriter.writeFile(filename, asmString)*/
             }
         }
     }

@@ -4,6 +4,7 @@ import scala.util.matching.Regex
 import scala.collection.mutable.ListBuffer
 import app.CompilerError
 import pprint.pprintln
+import scala.util.boundary
 
 class Token
 
@@ -21,6 +22,7 @@ case class KwBreak()    extends Token
 case class KwContinue() extends Token
 case class KwDo()       extends Token
 case class KwI32()      extends Token
+case class KwI64()      extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -49,6 +51,7 @@ case class OpBitXor()         extends Token // ^
 case class OpLShift()         extends Token // <<
 case class OpRShift()         extends Token // >>
 case class OpTilde()          extends Token // ~
+case class OpAs()             extends Token // as
 case class OpDot()            extends Token // .
 case class OpDoubleColon()    extends Token // ::
 case class OpRef()            extends Token // .*
@@ -74,7 +77,8 @@ case class OpLShiftAssign() extends Token // <<=
 case class OpRShiftAssign() extends Token // >>=
 
 case class TokIdent(value: String)     extends Token
-case class TokIntLit(value: Int)       extends Token
+case class TokI32Lit(value: Int)       extends Token
+case class TokI64Lit(value: Long)      extends Token
 case class TokStringLit(value: String) extends Token
 
 class TokenizerError(detail: String) extends CompilerError("Tokenizer", detail)
@@ -105,6 +109,10 @@ class Tokenizer(input: String) {
       (Word("continue"), _ => KwContinue()),
       (Word("do"), _ => KwDo()),
       (Word("i32"), _ => KwI32()),
+      (Word("int"), _ => KwI32()),
+      (Word("i64"), _ => KwI64()),
+      (Word("long"), _ => KwI64()),
+      (Word("as"), _ => OpAs()),
       (Lit("<<="), _ => OpLShiftAssign()),
       (Lit(">>="), _ => OpRShiftAssign()),
       (Lit("&&="), _ => OpBitAndAssign()),
@@ -151,7 +159,9 @@ class Tokenizer(input: String) {
       (Lit("]"), _ => RBracket()),
       (Lit("{"), _ => LBrace()),
       (Lit("}"), _ => RBrace()),
-      (RegexPat("\\d+"), s => TokIntLit(s.toInt)),
+      (RegexPat("\\d+i32"), s => TokI32Lit(s.stripSuffix("i32").toInt)),
+      (RegexPat("\\d+i64"), s => TokI64Lit(s.stripSuffix("i64").toLong)),
+      (RegexPat("\\d+"), s => TokI32Lit(s.toInt)),
       (RegexPat("\"[^\"]*\""), s => TokStringLit(s.substring(1, s.length - 1))),
       (RegexPat("[a-zA-Z_]\\w*"), s => TokIdent(s))
     )
@@ -177,17 +187,17 @@ class Tokenizer(input: String) {
                 val eol = currentSub.indexOf('\n')
                 idx += (if (eol == -1) currentSub.length else eol)
             } else {
-                for ((regex, tokenBuilder) <- tokenPatterns) {
-                    regex.findPrefixOf(currentSub) match {
-                        case Some(lexeme) =>
-                            idx += lexeme.length
-                            val tok = Some(tokenBuilder(lexeme))
-                            precomputedToken = tok
-                            return tok
-                        case None => ()
-                    }
+                tokenPatterns.collectFirst {
+                    case (regex, tokenBuilder) if regex.findPrefixOf(currentSub).isDefined =>
+                        val lexeme = regex.findPrefixOf(currentSub).get
+                        idx += lexeme.length
+                        val tok = tokenBuilder(lexeme)
+                        precomputedToken = Some(tok)
+                        tok
+                } match {
+                    case Some(matchedToken) => return Some(matchedToken)
+                    case None               => throw TokenizerError(s"Unknown character '${currentSub.head}' at index $idx")
                 }
-                throw TokenizerError(s"Unknown character '${currentSub.head}' at index $idx")
             }
         }
         None
