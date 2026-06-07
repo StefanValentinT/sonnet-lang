@@ -7,29 +7,42 @@ class Emitter() {
 
     def emitProgram(p: Asm.Program): String = {
         val staticVars                     = p.items.collect { case v: Asm.StaticVariable => v }
-        val (initialized, zeroInitialized) = staticVars.partition(_.init != 0)
+        val (initialized, zeroInitialized) = staticVars.partition(v => v.init != syntax.Const.I32Lit(0) && v.init != syntax.Const.I64Lit(0))
 
         if (initialized.nonEmpty) {
             sb.append(".data\n")
-            initialized.foreach(v => {
-                if (v.isGlobal) {
-                    sb.append(s".global _${v.name}\n")
+            initialized.foreach {
+                case Asm.StaticVariable(name, isGlobal, alignment, init) => {
+                    if (isGlobal) {
+                        sb.append(s".global _${name}\n")
+                    }
+                    val asmDirective = alignment match {
+                        case Asm.Size.Byte8 => ".quad"
+                        case Asm.Size.Byte4 => ".word"
+                    }
+                    sb.append(s".p2align ${calculateP2Align(alignment.bytes)}\n")
+                    sb.append(s"_$name:\n")
+
+                    val numValue = init match {
+                        case syntax.Const.I32Lit(n) => n
+                        case syntax.Const.I64Lit(n) => n
+                    }
+                    sb.append(s"    $asmDirective $numValue\n\n")
                 }
-                sb.append(".p2align 2\n")
-                sb.append(s"_${v.name}:\n")
-                sb.append(s"    .word ${v.init}\n\n")
-            })
+            }
         }
         if (zeroInitialized.nonEmpty) {
             sb.append(".bss\n")
-            zeroInitialized.foreach(v => {
-                if (v.isGlobal) {
-                    sb.append(s".global _${v.name}\n")
+            zeroInitialized.foreach {
+                case Asm.StaticVariable(name, isGlobal, alignment, init) => {
+                    if (isGlobal) {
+                        sb.append(s".global _${name}\n")
+                    }
+                    sb.append(s".p2align ${calculateP2Align(alignment.bytes)}\n")
+                    sb.append(s"_${name}:\n")
+                    sb.append(s"    .space ${alignment.bytes}\n\n")
                 }
-                sb.append(".p2align 2\n")
-                sb.append(s"_${v.name}:\n")
-                sb.append(s"    .space 4\n\n")
-            })
+            }
         }
 
         sb.append(".text\n")
@@ -38,6 +51,10 @@ class Emitter() {
             case _                  => ()
         }
         sb.toString()
+    }
+
+    def calculateP2Align(alignment: Int): Int = {
+        (math.log10(alignment) / math.log10(2)).toInt
     }
 
     def emitFunction(f: Asm.FunctionDef) = {
@@ -58,26 +75,28 @@ class Emitter() {
 
         case Asm.Adrp(destReg, label) =>
             inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE")
-        case Asm.LoadData(data, baseReg, destReg) =>
+
+        case Asm.LoadData(typ, data, baseReg, destReg) =>
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"ldr ${showOp(destReg)}, [${showOp(baseReg)}]")
-        case Asm.StoreData(srcReg, data, baseReg) =>
+
+        case Asm.StoreData(typ, srcReg, data, baseReg) =>
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"str ${showOp(srcReg)}, [${showOp(baseReg)}]")
 
-        case Asm.Load(Asm.StackSlot(offset), dest) => inst(s"ldr ${showOp(dest)}, [x29, #$offset]")
-        case Asm.Store(src, Asm.StackSlot(offset)) => inst(s"str ${showOp(src)}, [x29, #$offset]")
-        case Asm.Mov(src, dest)                    => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
+        case Asm.Load(typ, Asm.StackSlot(offset), dest) => inst(s"ldr ${showOp(dest)}, [x29, #$offset]")
+        case Asm.Store(typ, src, Asm.StackSlot(offset)) => inst(s"str ${showOp(src)}, [x29, #$offset]")
+        case Asm.Mov(typ, src, dest)                    => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
         case Asm.Ret() => {
             inst("mov sp, x29\n")
             inst("ldp x29, x30, [sp], #16\n")
             inst("ret")
         }
-        case Asm.Unary(op, operand) => {
+        case Asm.Unary(typ, op, operand) => {
             val mnemonic = if (op == Asm.UnaryOp.Neg) "neg" else "mvn"
             inst(s"$mnemonic ${showOp(operand)}, ${showOp(operand)}")
         }
-        case Asm.Binary(op, s1, s2, d) => {
+        case Asm.Binary(typ, op, s1, s2, d) => {
             val mnemonic = op match {
                 case Asm.BinaryOp.Add    => "add"
                 case Asm.BinaryOp.Sub    => "sub"
@@ -91,10 +110,10 @@ class Emitter() {
             }
             inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
         }
-        case Asm.MultiplySubtract(s1, s2, s3, d) => {
+        case Asm.MultiplySubtract(typ, s1, s2, s3, d) => {
             sb.append(s"    msub ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}, ${showOp(s3)}")
         }
-        case Asm.Compare(s1, s2) => {
+        case Asm.Compare(typ, s1, s2) => {
             inst(s"cmp ${showOp(s1)}, ${showOp(s2)}")
         }
         case Asm.ConditionalSet(condition, destination) => {
@@ -116,12 +135,16 @@ class Emitter() {
         case Asm.DeallocateStack(size) => {
             inst(s"add sp, sp, #${size}")
         }
-        case Asm.Push(operand) => {
+        case Asm.Push(typ, operand) => {
             operand match {
                 case Asm.Register(reg) => inst(s"str ${showOp(operand)}, [sp, #-16]!")
-                case Asm.Imm(ival) => {
+                case Asm.Imm32(ival) => {
                     inst(s"mov w9, #$ival\n")
                     inst("str w9, [sp, #-16]!")
+                }
+                case Asm.Imm64(ival) => {
+                    inst(s"mov x9, #$ival\n")
+                    inst("str x9, [sp, #-16]!")
                 }
                 case _ => throw new RuntimeException("Unsupported push operand type")
             }
@@ -129,7 +152,8 @@ class Emitter() {
     }
 
     def showOp(o: Asm.Operand): String = o match {
-        case Asm.Imm(ival)             => s"#$ival"
+        case Asm.Imm32(ival)           => s"#$ival"
+        case Asm.Imm64(ival)           => s"#$ival"
         case Asm.StackSlot(offset)     => s"[x29, #$offset]"
         case Asm.Register(Asm.Reg.W0)  => "w0"
         case Asm.Register(Asm.Reg.W1)  => "w1"

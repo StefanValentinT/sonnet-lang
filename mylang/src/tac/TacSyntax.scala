@@ -7,15 +7,18 @@ import pprint.pprintln
 import app.CompilerError
 import syntax.*
 
+// instructions are typeless, only locations are typed
 object Tac {
     case class Program(items: List[TopLevelItem])
 
     abstract sealed class TopLevelItem
-    case class FunctionDef(name: String, isGlobal: Boolean, params: List[String], body: List[Instruction]) extends TopLevelItem
-    case class StaticVariable(name: String, isGlobal: Boolean, init: Int)                                  extends TopLevelItem
+    case class FunctionDef(name: String, isGlobal: Boolean, params: List[Var], body: List[Instruction]) extends TopLevelItem
+    case class StaticVariable(name: String, isGlobal: Boolean, typ: Type, init: Const)                  extends TopLevelItem
 
     abstract sealed class Instruction
     case class Return(value: Val)                                          extends Instruction
+    case class SignExtend(src: Val, dest: Val)                             extends Instruction
+    case class Truncate(src: Val, dest: Val)                               extends Instruction
     case class Unary(unaryOp: UnaryOp, src: Val, dest: Val)                extends Instruction
     case class Binary(binaryOp: BinaryOp, src1: Val, src2: Val, dest: Val) extends Instruction
     case class Copy(src: Val, dest: Val)                                   extends Instruction
@@ -26,8 +29,12 @@ object Tac {
     case class FunctionCall(target: String, args: List[Val], dest: Val)    extends Instruction
 
     abstract sealed class Val
-    case class Constant(value: Int) extends Val
-    case class Var(value: String)   extends Val
+    case class Constant(value: Const)        extends Val
+    case class Var(value: String, typ: Type) extends Val
+
+    abstract sealed class Type
+    case class I32() extends Type
+    case class I64() extends Type
 
     enum UnaryOp {
         case Complement, Negate, Not
@@ -39,20 +46,24 @@ object Tac {
             GreaterThan, GreaterOrEqual,
             BitAnd, BitOr, BitXor, LShift, RShift
     }
+}
 
+def getTacValType(t: Tac.Val): Tac.Type = t match {
+    case Tac.Var(_, t)                 => t
+    case Tac.Constant(Const.I32Lit(_)) => Tac.I32()
+    case Tac.Constant(Const.I64Lit(_)) => Tac.I64()
 }
 
 class TacEmitterError(detail: String) extends CompilerError("Three-address-code generator", detail)
 
 class TacEmitter(prog: Typed.Program) {
-    /*
     private var tempCounter  = 0
     private var labelCounter = 0
     private val instructions = ListBuffer[Tac.Instruction]()
 
-    private def newTemp(): Tac.Var = {
+    private def newTemp(t: Tac.Type): Tac.Var = {
         tempCounter += 1
-        Tac.Var(s"t$tempCounter")
+        Tac.Var(s"t$tempCounter", t)
     }
 
     private def newLabel(): Tac.Label = {
@@ -85,6 +96,17 @@ class TacEmitter(prog: Typed.Program) {
         case BinaryOp.RShift         => Tac.BinaryOp.RShift
     }
 
+    private def defaultVal(t: Type): Tac.Constant = t match {
+        case I32() => Tac.Constant(Const.I32Lit(0))
+        case I64() => Tac.Constant(Const.I64Lit(0))
+    }
+
+    private def convertType(t: Type): Tac.Type = t match {
+        case I32() => Tac.I32()
+        case I64() => Tac.I64()
+        case _     => throw TacEmitterError("Not all types are supported in the backend yet.")
+    }
+
     private def isGlobal(linkage: Linkage): Boolean =
         linkage match {
             case Linkage.Public  => true
@@ -95,19 +117,19 @@ class TacEmitter(prog: Typed.Program) {
         case Typed.Constant(value, typ) =>
             Tac.Constant(value)
         case Typed.Var(value, typ) =>
-            Tac.Var(value)
+            Tac.Var(value, convertType(typ))
         case Typed.Assignment(Typed.Var(v, varType), rhs, typ) => {
             val res = emitExpressionTac(rhs)
-            instructions += Tac.Copy(res, Tac.Var(v))
-            Tac.Var(v)
+            instructions += Tac.Copy(res, Tac.Var(v, convertType(varType)))
+            Tac.Var(v, convertType(varType))
         }
         case Typed.Block(statements, exp, typ) => {
             statements.foreach(emitStatementTac)
-            if exp.isDefined then emitExpressionTac(exp.get) else Tac.Constant(0)
+            if exp.isDefined then emitExpressionTac(exp.get) else defaultVal(typ)
         }
         case Typed.If(cond, thenB, None, typ) => {
             val c         = emitExpressionTac(cond)
-            val dest      = newTemp()
+            val dest      = newTemp(convertType(typ))
             val elseLabel = newLabel()
             val endLabel  = newLabel()
             instructions += Tac.JumpIfZero(c, elseLabel)
@@ -115,13 +137,13 @@ class TacEmitter(prog: Typed.Program) {
             instructions += Tac.Copy(v1, dest)
             instructions += Tac.Jump(endLabel)
             instructions += elseLabel
-            instructions += Tac.Copy(Tac.Constant(0), dest)
+            instructions += Tac.Copy(defaultVal(typ), dest)
             instructions += endLabel
             dest
         }
         case Typed.If(cond, thenB, Some(elseB), typ) => {
             val c         = emitExpressionTac(cond)
-            val dest      = newTemp()
+            val dest      = newTemp(convertType(typ))
             val elseLabel = newLabel()
             val endLabel  = newLabel()
             instructions += Tac.JumpIfZero(c, elseLabel)
@@ -134,14 +156,9 @@ class TacEmitter(prog: Typed.Program) {
             instructions += endLabel
             dest
         }
-        case Typed.Return(exp, typ) => {
-            val resultVal = emitExpressionTac(exp)
-            instructions += Tac.Return(resultVal)
-            Tac.Constant(0)
-        }
         case Typed.Unary(op, exp, typ) => {
             val srcVal  = emitExpressionTac(exp)
-            val destVar = newTemp()
+            val destVar = newTemp(convertType(typ))
             instructions += Tac.Unary(convertUnOp(op), srcVal, destVar)
             destVar
         }
@@ -153,11 +170,11 @@ class TacEmitter(prog: Typed.Program) {
             instructions += Tac.JumpIfZero(v1, falseLabel)
             val v2 = emitExpressionTac(e2)
             instructions += Tac.JumpIfZero(v2, falseLabel)
-            val dest = newTemp()
-            instructions += Tac.Copy(Tac.Constant(1), dest)
+            val dest = newTemp(Tac.I32())
+            instructions += Tac.Copy(Tac.Constant(Const.I32Lit(1)), dest)
             instructions += Tac.Jump(endLabel)
             instructions += falseLabel
-            instructions += Tac.Copy(Tac.Constant(0), dest)
+            instructions += Tac.Copy(Tac.Constant(Const.I32Lit(0)), dest)
             instructions += endLabel
             dest
         }
@@ -169,11 +186,11 @@ class TacEmitter(prog: Typed.Program) {
             instructions += Tac.JumpIfNotZero(v1, falseLabel)
             val v2 = emitExpressionTac(e2)
             instructions += Tac.JumpIfNotZero(v2, falseLabel)
-            val dest = newTemp()
-            instructions += Tac.Copy(Tac.Constant(1), dest)
+            val dest = newTemp(Tac.I32())
+            instructions += Tac.Copy(Tac.Constant(Const.I32Lit(1)), dest)
             instructions += Tac.Jump(endLabel)
             instructions += falseLabel
-            instructions += Tac.Copy(Tac.Constant(0), dest)
+            instructions += Tac.Copy(Tac.Constant(Const.I32Lit(0)), dest)
             instructions += endLabel
             dest
         }
@@ -181,7 +198,7 @@ class TacEmitter(prog: Typed.Program) {
         case Typed.Binary(op, e1, e2, typ) => {
             val v1   = emitExpressionTac(e1)
             val v2   = emitExpressionTac(e2)
-            val dest = newTemp()
+            val dest = newTemp(convertType(typ))
             instructions += Tac.Binary(convertBinOp(op), v1, v2, dest)
             dest
         }
@@ -195,19 +212,39 @@ class TacEmitter(prog: Typed.Program) {
             val b = emitExpressionTac(body)
             instructions += Tac.Jump(continueLabel)
             instructions += breakLabel
-            Tac.Constant(0)
+            Tac.Constant(Const.I32Lit(0))
+        }
+
+        case Typed.Cast(targetType, exp, typ) => {
+            val res = emitExpressionTac(exp)
+            if targetType == getTacValType(res) then {
+                res
+            } else {
+                val dest = newTemp(convertType(typ))
+                targetType match {
+                    case I64() => instructions += Tac.SignExtend(res, dest)
+                    case I32() => instructions += Tac.Truncate(res, dest)
+                }
+                dest
+            }
         }
 
         case Typed.Break(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"break_$label"))
-            Tac.Constant(0)
+            Tac.Constant(Const.I32Lit(0))
         }
         case Typed.Continue(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"continue_$label"))
-            Tac.Constant(0)
+            Tac.Constant(Const.I32Lit(0))
         }
+        case Typed.Return(exp, typ) => {
+            val resultVal = emitExpressionTac(exp)
+            instructions += Tac.Return(resultVal)
+            Tac.Constant(Const.I32Lit(0))
+        }
+
         case Typed.FunctionCall(target, args, typ) => {
-            val dest = newTemp()
+            val dest = newTemp(convertType(typ))
             instructions += Tac.FunctionCall(target, args.map(emitExpressionTac), dest)
             dest
         }
@@ -217,11 +254,11 @@ class TacEmitter(prog: Typed.Program) {
         case Typed.ExpressionStmt(exp) => {
             emitExpressionTac(exp)
         }
-        case Typed.VarDeclaration(name, initializerOpt) =>
+        case Typed.VarDeclaration(name, typ, initializerOpt) =>
             initializerOpt match {
                 case Some(initExpr) =>
                     val res = emitExpressionTac(initExpr)
-                    instructions += Tac.Copy(res, Tac.Var(name))
+                    instructions += Tac.Copy(res, Tac.Var(name, convertType(typ)))
                 case None =>
             }
     }
@@ -231,8 +268,8 @@ class TacEmitter(prog: Typed.Program) {
         val ret = emitExpressionTac(funcDef.body)
         instructions += Tac.Return(ret)
 
-        val flatParams = funcDef.params.map({ case (pName, _) => pName })
-        Tac.FunctionDef(funcDef.name, isGlobal(funcDef.linkage), flatParams, instructions.toList)
+        val params = funcDef.params.map({ case (pName, typ) => Tac.Var(pName, convertType(typ)) })
+        Tac.FunctionDef(funcDef.name, isGlobal(funcDef.linkage), params, instructions.toList)
     }
 
     def emitProgramTac(): Tac.Program = {
@@ -241,18 +278,24 @@ class TacEmitter(prog: Typed.Program) {
             item match {
                 case f: Typed.FunctionDef =>
                     topItems.append(emitFunctionDef(f))
-                case v: Typed.GlobalVarDeclaration => {
+                case Typed.GlobalVarDeclaration(name, init, typ, linkage) => {
 
-                    val initInt = v.init match {
+                    val initConst = init match {
                         case Some(Typed.Constant(value, _)) => value
-                        case None                           => 0 // null-default-initialization for minimal exec-size (since the value of an undefined variable is undefined)
-                        case _                              => throw TacEmitterError("Initializer element is not a compile-time constant.")
+                        // null-default-initialization for minimal exec-size (since the value of an undefined variable is undefined)
+                        case None =>
+                            typ match {
+                                case I32() => Const.I32Lit(0)
+                                case I64() => Const.I64Lit(0)
+                                case v     => throw TacEmitterError(s"No default initiliaziation for $v defined by this implementation.")
+                            }
+                        case _ => throw TacEmitterError("Initializer element is not a compile-time constant.")
                     }
-                    topItems.append(Tac.StaticVariable(v.name, isGlobal(v.linkage), initInt))
+                    topItems.append(Tac.StaticVariable(name, isGlobal(linkage), convertType(typ), initConst))
                 }
                 case _: Typed.Declaration => ()
             }
         })
         Tac.Program(topItems.toList)
-    }*/
+    }
 }

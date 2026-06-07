@@ -13,8 +13,8 @@ object Typed {
     case class GlobalVarDeclaration(name: String, init: Option[Expression], typ: Type, linkage: Linkage)                     extends TopLevelItem
 
     abstract sealed class Statement
-    case class VarDeclaration(name: String, init: Option[Expression]) extends Statement
-    case class ExpressionStmt(exp: Expression)                        extends Statement
+    case class VarDeclaration(name: String, typ: Type, init: Option[Expression]) extends Statement
+    case class ExpressionStmt(exp: Expression)                                   extends Statement
 
     abstract sealed class Expression
     case class Constant(const: Const, typ: Type)                                                       extends Expression
@@ -136,7 +136,7 @@ object TypeChecker {
                     }
                     typedExpr
                 })
-                Typed.VarDeclaration(name, typedInit)
+                Typed.VarDeclaration(name, typ, typedInit)
             }
         }
     }

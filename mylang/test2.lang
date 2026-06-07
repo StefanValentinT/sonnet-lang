@@ -1,0 +1,38 @@
+print_i32 : (i32) -> i32;
+print_i64 : (i64) -> i32;
+
+var max_32: i32;
+var min_32: i32;
+var max_64: i64;
+var min_64: i64;
+
+fun test_i32_limits() i32 {
+	min_32 = 1 << 31;
+	max_32 = ~min_32;
+	print_i32(max_32);
+	print_i32(min_32);
+	0
+};
+
+fun test_i64_limits() i32 {
+	min_64 = 1i64 << 63i64;
+	max_64 = ~min_64;
+	print_i64(max_64);
+	print_i64(min_64);
+	0
+};
+
+fun test_truncation_and_masking() i32 {
+	var complex_64 : i64 = (1i64 << 32i64) || 1i64;
+	var high_half : i64 = complex_64 >> 32i64;
+	print_i64(high_half);
+	0
+};
+
+fun main() i32 {
+	test_i32_limits();
+	test_i64_limits();
+	test_truncation_and_masking();
+	print_i32(73);
+	0
+};

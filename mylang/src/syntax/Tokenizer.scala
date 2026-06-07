@@ -159,9 +159,38 @@ class Tokenizer(input: String) {
       (Lit("]"), _ => RBracket()),
       (Lit("{"), _ => LBrace()),
       (Lit("}"), _ => RBrace()),
-      (RegexPat("\\d+i32"), s => TokI32Lit(s.stripSuffix("i32").toInt)),
-      (RegexPat("\\d+i64"), s => TokI64Lit(s.stripSuffix("i64").toLong)),
-      (RegexPat("\\d+"), s => TokI32Lit(s.toInt)),
+      (
+        RegexPat("\\d+i32"),
+        s => {
+            val numStr = s.stripSuffix("i32")
+            val bigNum = BigInt(numStr)
+            if (bigNum > 2147483647 || bigNum < -2147483648) {
+                throw TokenizerError(s"32-bit integer literal '$s' exceeds allowable i32 bounds.")
+            }
+            TokI32Lit(bigNum.toInt)
+        }
+      ),
+      (
+        RegexPat("\\d+i64"),
+        s => {
+            val numStr = s.stripSuffix("i64")
+            val bigNum = BigInt(numStr)
+            if (bigNum > BigInt("9223372036854775807") || bigNum < BigInt("-9223372036854775808")) {
+                throw TokenizerError(s"64-bit integer literal '$s' exceeds allowable i64 bounds.")
+            }
+            TokI64Lit(bigNum.toLong)
+        }
+      ),
+      (
+        RegexPat("\\d+"),
+        s => {
+            val bigNum = BigInt(s)
+            if (bigNum > 2147483647 || bigNum < -2147483648) {
+                throw TokenizerError(s"Implicit 32-bit integer literal '$s' exceeds allowable i32 bounds.")
+            }
+            TokI32Lit(bigNum.toInt)
+        }
+      ),
       (RegexPat("\"[^\"]*\""), s => TokStringLit(s.substring(1, s.length - 1))),
       (RegexPat("[a-zA-Z_]\\w*"), s => TokIdent(s))
     )
