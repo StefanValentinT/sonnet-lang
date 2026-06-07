@@ -76,27 +76,27 @@ class Emitter() {
         case Asm.Adrp(destReg, label) =>
             inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE")
 
-        case Asm.LoadData(typ, data, baseReg, destReg) =>
+        case Asm.LoadData(data, baseReg, destReg) =>
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"ldr ${showOp(destReg)}, [${showOp(baseReg)}]")
 
-        case Asm.StoreData(typ, srcReg, data, baseReg) =>
+        case Asm.StoreData(srcReg, data, baseReg) =>
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"str ${showOp(srcReg)}, [${showOp(baseReg)}]")
 
-        case Asm.Load(typ, Asm.StackSlot(offset), dest) => inst(s"ldr ${showOp(dest)}, [x29, #$offset]")
-        case Asm.Store(typ, src, Asm.StackSlot(offset)) => inst(s"str ${showOp(src)}, [x29, #$offset]")
-        case Asm.Mov(typ, src, dest)                    => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
+        case Asm.Load(Asm.StackSlot(offset, _), dest) => inst(s"ldr ${showOp(dest)}, [x29, #$offset]")
+        case Asm.Store(src, Asm.StackSlot(offset, _)) => inst(s"str ${showOp(src)}, [x29, #$offset]")
+        case Asm.Mov(src, dest)                       => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
         case Asm.Ret() => {
             inst("mov sp, x29\n")
             inst("ldp x29, x30, [sp], #16\n")
             inst("ret")
         }
-        case Asm.Unary(typ, op, operand) => {
+        case Asm.Unary(op, operand) => {
             val mnemonic = if (op == Asm.UnaryOp.Neg) "neg" else "mvn"
             inst(s"$mnemonic ${showOp(operand)}, ${showOp(operand)}")
         }
-        case Asm.Binary(typ, op, s1, s2, d) => {
+        case Asm.Binary(op, s1, s2, d) => {
             val mnemonic = op match {
                 case Asm.BinaryOp.Add    => "add"
                 case Asm.BinaryOp.Sub    => "sub"
@@ -110,10 +110,10 @@ class Emitter() {
             }
             inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
         }
-        case Asm.MultiplySubtract(typ, s1, s2, s3, d) => {
+        case Asm.MultiplySubtract(s1, s2, s3, d) => {
             sb.append(s"    msub ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}, ${showOp(s3)}")
         }
-        case Asm.Compare(typ, s1, s2) => {
+        case Asm.Compare(s1, s2) => {
             inst(s"cmp ${showOp(s1)}, ${showOp(s2)}")
         }
         case Asm.ConditionalSet(condition, destination) => {
@@ -135,7 +135,7 @@ class Emitter() {
         case Asm.DeallocateStack(size) => {
             inst(s"add sp, sp, #${size}")
         }
-        case Asm.Push(typ, operand) => {
+        case Asm.Push(operand) => {
             operand match {
                 case Asm.Register(reg) => inst(s"str ${showOp(operand)}, [sp, #-16]!")
                 case Asm.Imm32(ival) => {
@@ -154,7 +154,7 @@ class Emitter() {
     def showOp(o: Asm.Operand): String = o match {
         case Asm.Imm32(ival)           => s"#$ival"
         case Asm.Imm64(ival)           => s"#$ival"
-        case Asm.StackSlot(offset)     => s"[x29, #$offset]"
+        case Asm.StackSlot(offset, _)  => s"[x29, #$offset]"
         case Asm.Register(Asm.Reg.W0)  => "w0"
         case Asm.Register(Asm.Reg.W1)  => "w1"
         case Asm.Register(Asm.Reg.W2)  => "w2"

@@ -11,39 +11,48 @@ object Asm {
     case class StaticVariable(name: String, isGlobal: Boolean, alignment: Size, init: Const) extends TopLevelItem
 
     abstract sealed class Instruction
-    case class Mov(typ: Type, src: Operand, dest: Operand)                                  extends Instruction
-    case class Load(typ: Type, src: StackSlot, dest: Register)                              extends Instruction
-    case class Store(typ: Type, src: Register, dest: StackSlot)                             extends Instruction
-    case class Adrp(dest: Register, label: String)                                          extends Instruction
-    case class LoadData(typ: Type, src: Data, baseReg: Register, dest: Register)            extends Instruction
-    case class StoreData(typ: Type, src: Register, dest: Data, baseReg: Register)           extends Instruction
-    case class Unary(typ: Type, op: UnaryOp, operand: Operand)                              extends Instruction
-    case class Sextw(src: Operand, dest: Operand)                                           extends Instruction
-    case class AllocateStack(size: Int)                                                     extends Instruction
-    case class DeallocateStack(size: Int)                                                   extends Instruction
-    case class Push(typ: Type, src: Operand)                                                extends Instruction
-    case class Call(target: String)                                                         extends Instruction
-    case class Ret()                                                                        extends Instruction
-    case class Binary(typ: Type, op: BinaryOp, src1: Operand, src2: Operand, dest: Operand) extends Instruction
+    case class Mov(src: Operand, dest: Operand)                                  extends Instruction
+    case class Load(src: StackSlot, dest: Register)                              extends Instruction
+    case class Store(src: Register, dest: StackSlot)                             extends Instruction
+    case class Adrp(dest: Register, label: String)                               extends Instruction
+    case class LoadData(src: Data, baseReg: Register, dest: Register)            extends Instruction
+    case class StoreData(src: Register, dest: Data, baseReg: Register)           extends Instruction
+    case class Unary(op: UnaryOp, operand: Operand)                              extends Instruction
+    case class Sextw(src: Operand, dest: Operand)                                extends Instruction
+    case class AllocateStack(size: Int)                                          extends Instruction
+    case class DeallocateStack(size: Int)                                        extends Instruction
+    case class Push(src: Operand)                                                extends Instruction
+    case class Call(target: String)                                              extends Instruction
+    case class Ret()                                                             extends Instruction
+    case class Binary(op: BinaryOp, src1: Operand, src2: Operand, dest: Operand) extends Instruction
     // dest = src3 - (src1 * src2)
-    case class MultiplySubtract(typ: Type, src1: Operand, src2: Operand, src3: Operand, dest: Operand) extends Instruction
-    case class Compare(typ: Type, source1: Operand, source2: Operand)                                  extends Instruction
-    case class ConditionalSet(condition: ConditionCode, destination: Operand)                          extends Instruction
-    case class ConditionalBranch(condition: ConditionCode, targetLabel: String)                        extends Instruction
-    case class Branch(targetLabel: String)                                                             extends Instruction
-    case class Label(name: String)                                                                     extends Instruction
+    case class MultiplySubtract(src1: Operand, src2: Operand, src3: Operand, dest: Operand) extends Instruction
+    case class Compare(source1: Operand, source2: Operand)                                  extends Instruction
+    case class ConditionalSet(condition: ConditionCode, destination: Operand)               extends Instruction
+    case class ConditionalBranch(condition: ConditionCode, targetLabel: String)             extends Instruction
+    case class Branch(targetLabel: String)                                                  extends Instruction
+    case class Label(name: String)                                                          extends Instruction
 
     abstract sealed class Operand
     case class Imm32(value: Int)                   extends Operand
     case class Imm64(value: Long)                  extends Operand
     case class Register(reg: Reg)                  extends Operand
     case class PseudoReg(name: String, size: Size) extends Operand
-    case class StackSlot(offset: Int)              extends Operand
-    case class Data(location: String)              extends Operand
+    case class StackSlot(offset: Int, size: Size)  extends Operand
+    case class Data(location: String, size: Size)  extends Operand
 
     abstract sealed class Type
     case class I32() extends Type // I32
     case class I64() extends Type // I64
+
+    def getOperandSize(op: Asm.Operand): Asm.Size = op match {
+        case Asm.Imm32(_)           => Asm.Size.Byte4
+        case Asm.Imm64(_)           => Asm.Size.Byte8
+        case Asm.Register(reg)      => if (reg == reg.to64) Asm.Size.Byte8 else Asm.Size.Byte4
+        case Asm.PseudoReg(_, size) => size
+        case Asm.StackSlot(_, size) => size
+        case Asm.Data(_, size)      => size
+    }
 
     enum Size {
         case Byte4, Byte8
