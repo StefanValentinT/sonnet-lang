@@ -1,5 +1,10 @@
 #let dotted = repeat(h(0.25em) + text(fill:gray, ".") + h(0.25em))
 
+#let today = datetime.today()
+
+#let note(c) = [#linebreak() #smallcaps("Note") #c]
+#let example(c) = [#linebreak() #smallcaps("Example") #c]
+
 #let new(key, desc, display: none) = context {
 	let loc = here()
 	let definition-label = label("g-def-" + key)
@@ -55,6 +60,15 @@
 		font: "New Computer Modern",
 		size: 11pt
 	)
+	show raw.where(block: true): it => block(
+		width: 100%,
+		stroke: 1pt + silver,
+		inset: 10pt,
+		layout(size => {
+			set text(hyphenate: false)
+			it
+		})
+	)
 	set par(
 		justify: true,
 		leading: 0.7em,
@@ -85,7 +99,8 @@
 		#align(center)[
 			#text(size: 20pt, weight: "bold")[#title] \
 			#v(1em)
-			#text(size: 14pt)[Version #version] \
+			#text(size: 14pt)[Version #version dated
+				#today.display("[day].[month].[year]")] \
 			#v(1em)
 			#grid(
 				columns: (1fr),
@@ -98,6 +113,8 @@
 		#abstract
 	]
 
+	set underline(offset: 2pt)
+
 	show heading.where(level: 1): set align(center)
 	show heading.where(level: 1): set text(size: 13pt, weight: "bold")
 	show heading.where(level: 1): smallcaps
@@ -109,7 +126,7 @@
 
 	show heading.where(level: 3): it => {
 		set block(spacing: 0em)
-		text(size: 11pt, weight: "regular", style: "italic")[#it.body.]
+		text(size: 11pt, weight: "regular", style: "italic")[#underline[#it.body.]]
 		h(0.5em)
 	}
 
