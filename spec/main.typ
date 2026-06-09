@@ -13,3 +13,4 @@
 #include "definitions.typ"
 
 #include "syntax.typ"
+#include "semantics.typ"

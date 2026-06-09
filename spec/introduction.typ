@@ -19,7 +19,9 @@ The means by which a conforming evaluator is invoked or the way it evaluates a g
 
 = Conformance & Specification
 
-The use of "shall" denotes a mandatory requirement on an implementation, while "shall not" and "may not" declare a strict prohibition if used within a constraint
+The following definitions of verbs shall only apply within the context of a constraint on the implementation.
+
+The use of "shall" denotes a mandatory requirement on an implementation, while "shall not" and "may not" declare a strict prohibition.
 
 "May" is used to specify that some behaviour is conformant to the specification, noticeably it is not exclusive, signifying multiple interpretations may be within the bounds of conformance. "Need not" is used to explicitly denote the non-requiredness of a particular property.
 
