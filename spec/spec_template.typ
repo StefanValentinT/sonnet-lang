@@ -1,50 +1,22 @@
-#let dotted = repeat(h(0.25em) + text(fill:gray, ".") + h(0.25em))
-
 #let today = datetime.today()
 
-#let note(c) = [#linebreak() #smallcaps("Note") #c]
-#let example(c) = [#linebreak() #smallcaps("Example") #c]
+#let note(c) = [
+	#block(
+		stroke: (left: 1pt + silver),
+		inset: (left: 8pt),
+		outset: (y: 2pt),
+		[#smallcaps("Note") #c]
+	)
+]
 
-#let new(key, desc, display: none) = context {
-	let loc = here()
-	let definition-label = label("g-def-" + key)
-	let reference-label = label("g-ref-" + key)
-	
-	let previous = query(selector(definition-label).before(loc))
-	let Wort = if display != none { display } else { key }
-	
-	if previous.len() == 0 {
-		[#link(definition-label)[#text(style: "italic")[#Wort]]#reference-label#metadata(desc)#definition-label]
-	} else {
-		link(reference-label, Wort)
-	}
-}
-
-#let print-glossary(title: "Glossary") = {
-	heading(level: 1, numbering: none, title)
-	
-	context {
-		let entries = query(selector(metadata)).filter(e => {
-			e.has("label") and str(e.label).starts-with("g-def-")
-		})
-		
-		let unique-entries = entries.sorted(key: e => str(e.label))
-		
-		for entry in unique-entries {
-			let key = str(entry.label).slice(6)
-			let ref-label = label("g-ref-" + key)
-			let page-num = str(entry.location().page())
-			let formatted-key = upper(key.at(0)) + key.slice(1)
-			par(first-line-indent: 0pt, hanging-indent: 1.5em, justify: true)[
-			#text(size: 11pt, weight: "regular", fill: black, link(ref-label, formatted-key))
-			#text(size: 11pt)[ · #entry.value]
-			#box(width: 1fr)[#dotted]
-			#text(size: 11pt, fill: black, link(ref-label)[#page-num])
-			]
-			v(0.8em)
-		}
-	}
-}
+#let example(c) = [
+	#block(
+		stroke: (left: 1pt + silver),
+		inset: (left: 8pt),
+		outset: (y: 2pt),
+		[#smallcaps("Example") #c]
+	)
+]
 
 #let spec(
 	title: "",
@@ -130,26 +102,25 @@
 		h(0.5em)
 	}
 
-	show outline.entry: it => {
-		link(it.element.location())[
-			#it.indented(
-				it.prefix(),
-				[
-					#it.body()
-					#box(width: 1fr)[#dotted]
-					#it.page()
-				]
-			)
-		]
-	}
+	show outline.entry.where(level: 1): set block(above: 1.0em)
+	show outline.entry.where(level: 1): set text(weight: "bold")
+	show outline.entry.where(level: 1): set outline.entry(fill: none)
+	set outline.entry(fill: pad(left: 0.2em, right: 1em, repeat(gap: 0.50em, [.])))
+	show outline.entry: it => link(
+		it.element.location(),
+		if it.prefix() == none {
+			it.indented(none, it.inner())
+		} else {
+			it.indented(it.prefix() + h(0.4em), it.inner())
+		},
+	)
 
-	outline(title: [Contents], indent: 1.5em)
+	outline(title: [Contents], depth: 2, indent: 1.0em)
 	colbreak()
 
 	body
 
-	pagebreak()
-	print-glossary()
+	colbreak()
 	bibliography(bib, title: "References", style: "ieee")
 
 }

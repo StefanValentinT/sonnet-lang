@@ -7,15 +7,6 @@ Sonnet ought to be beautiful in its simplicity, pristine in its architecture, br
 
 Therefore, the specification is written in a way to facilitate both unambiguity and accessibility for everyone. Whenever these goals conflicted, we opted to add important information using a #smallcaps("Note"), or, where needed, to provide additional reiteration or exemplification marked with an #smallcaps("Example"), whilst not compromising the precise actual specification. Both shall be regarded as non-authoritative for the meaning of the language and may only aid in its understanding.
 
-In the tradition of Kernighan & Ritchie @kernighan1988 this is "Hello World" in Sonnet.
-```
-use stdio;
-
-fun main(){
-	println("Hello world!")
-}
-```
-
 == Scope
 
 We first detail the actual representation of Sonnet programs, before specifying their syntactical structure. Thereafter the constraints and requirements enacted upon the maening of a program are detailed and its evaluation via the reduction of terms. The means by which a program may interface with the surrounding world are described and lastly a collection of definitions is given that a conforming implementation shall provide as minimal, opaque "atoms" of computation.

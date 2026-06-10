@@ -9,22 +9,28 @@ The following definitions apply to the specification. Other terms are defined wh
 - *Bit* is a unit of data storage capable of holding one of two values, commonly referred to as ${0, 1}.$ Individual bits do not need to be addressable.
 
 - A *byte* is the smallest unit of bits that is addressable.
-	#note[A byte commonly consists of 8 bits though a different length can be used for a conforming implementation.]
+	#note[
+	A byte commonly consists of 8 bits though a different length can be used for a conforming implementation.
+	]
 
 - *Binary data* is the representation of data using bits, consisting of one or more bytes.
 
 - A *character* is a member of a set of characters that make up the textual representation of a Sonnet program.
 
-- An *implementation-defined* value or behaviour is one left unspecified by the specification where each implementation must document its choice. A subset of this is *locale-defined* where rather than the implementation the circumstances of its invocation define certain behaviours. 
-	#example[The behaviour of functions such as `is_lower` may depend on the language a user has set for their computer.]
-
-- An *ill-formed* state is a state entered upon evaluating an ill-formed construct or data. This specification imposes no requirements on a program that enters an ill-formed state. Reaching an ill-formed state completely invalidates the semantics of the entire program execution; no statements are made regarding any behaviour, including behaviour prior to the point at which the ill-formed state was reached. A construct or data is ill-formed if its evaluation violates the semantic rules of this specification.
+- An *implementation-defined* value or behaviour is one left unspecified by the specification where each implementation must document its choice. A subset of this is *locale-defined* where rather than the implementation the circumstances of its invocation define certain behaviours.
+	#example[
+	The behaviour of functions such as `is_lower` may depend on the language a user has set for their computer.
+	]
 
 - *Unspecified behaviour* is behaviour for which the specification imposes no requirements, allowing multiple valid outcomes. After the unspecified behaviour, program execution continues normally. Unspecified behaviour is defined by explicitly declaring it as such or by the omission of any explicit definition of behaviour.
+
 	#example[The evaluation order of + is unspecified; thus
-	```
-	print("Hello ") + print("world!")
-	``` may produce either "Hello World!" or "world!Hello ".]
+		```
+		print("Hello ") + print("world!")
+		``` may produce either "Hello World!" or "world!Hello ".
+	]
+
+- *Undefined behaviour* is a sub-case of unspecified behaviour for which this specification imposes no requirements. Reaching undefined behaviour completely invalidates the semantics of the entire program execution; no statements are made regarding any behaviour, including behaviour prior to the point at which the undefined behaviour was invoked. Undefined behaviour may be the result of evaluating erroneous program constructs or data.
 
 = Conventions
 
