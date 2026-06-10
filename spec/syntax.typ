@@ -37,7 +37,7 @@ The set of characters must at least suffice the following requirements, being ab
 	row-gutter: 1em,
 	align: center,
 	[+], [-], [\*], [/], [<], [>], [=], [!], [?], [&], [|], [%], [\$], [.],
-	[:], [;], [,], [(], [)],[\[], [\]], [{], [}], [~], [\_], [␣]
+	[:], [;], [,], [(], [)],[\[], [\]], [{], [}], [\~], [\_], [␣]
 )
 
 The encoding of a program except for all string literals it might contain, is implementation-defined.
