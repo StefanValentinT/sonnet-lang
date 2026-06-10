@@ -76,5 +76,12 @@ The result of converting a value of an integer type (i$n$ or u$n$) to a floating
 - If the integer value cannot be represented exactly but falls between two representable floating-point values, the value is rounded to one of the adjacent representable values. The choice of rounding direction is implementation-defined but must conform to the IEEE 754 standard.
 - If the integer value exceeds the maximum representable finite value of the target floating-point type, the result is undefined.
 
+=== Floating-point to floating-point
+The result of converting a value of a floating-point type f$n$ to another floating-point type f$m$ depends on the relative precision of the source and target formats:
+
+- If the source value can be represented exactly in the target format, the value shall remian unchanged.
+- If the source value cannot be represented exactly because the target format has less precision, the value is rounded to one of the adjacent representable values. The rounding direction is implementation-defined but must conform to the IEEE 754 rounding modes.
+- If the magnitude of the source value exceeds the maximum representable finite value of the target type, the result is implementation-defined.
+
 === Integer Overflow
 If an integer overflows the behaviour is left undefined.

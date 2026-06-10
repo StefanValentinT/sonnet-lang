@@ -18,6 +18,16 @@
 	)
 ]
 
+#let prod(left, ..right) = [
+	#v(0.25em)
+	#left $->$ 
+
+	#block(inset: (left: 1em))[
+		#right.pos().map(item => [#item]).join(" | ")
+	]
+	#v(0.25em)
+]
+
 #let spec(
 	title: "",
 	version: "",
