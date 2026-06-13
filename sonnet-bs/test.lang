@@ -1,0 +1,49 @@
+pow : (i32, i32) -> i32;
+print_i32 : (i32) -> i32;
+print_i64 : (i64) -> i32;
+
+x: i32;
+
+fun impure() i32 {
+	x += 1; 0
+};
+
+impure: () -> i32;
+
+#wrong : (i64) -> i32;
+#fun wrong(a: i32) i64 0i64;
+
+fun crunch(a: i32, b: i32) i32
+	(a + b) * (a - b) + (a * b) - (a + 1)
+;
+
+var g1: i64;
+var g2: i64;
+
+fun test_globals() i32 {
+	g1 = 42i64;
+	g2 = g1;
+	print_i64(g2);
+	0
+};
+
+fun main() i32 {
+	x = 10;
+	impure();
+	print_i32(pow(2,x));
+	print_i32(crunch(2,4));
+	test_globals();
+	0
+};
+
+fun pow(base: i32, exp: i32) i32 {
+	var counter : i32 = 0;
+	var res : i32 = 1;
+	while counter < exp do {
+		res *= base;
+		counter += 1;
+	};
+	res
+};
+
+var x : i32;

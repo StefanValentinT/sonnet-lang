@@ -1,0 +1,3 @@
+[test-suite]
+exec = "janet runhandler.janet"
+test_folder = "tests"
