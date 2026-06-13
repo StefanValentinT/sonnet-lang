@@ -4,6 +4,7 @@ import tac.Tac
 import tac.getTacValType
 import scala.collection.mutable.{Map, ListBuffer}
 import syntax.Size
+import tac.isSigned
 
 def codegenProgram(p: Tac.Program): Asm.Program = {
     val items = p.items.map {
@@ -18,7 +19,7 @@ def codegenProgram(p: Tac.Program): Asm.Program = {
 
 def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
     val paramMoves = f.params.zipWithIndex.flatMap { case (paramVar, index) =>
-        val asmType = codegenTacType(paramVar.typ)
+        val asmType = paramVar.typ
         val size    = Size.fromTacType(paramVar.typ)
         if (index < 8) {
             List(Asm.Mov(Asm.Register(Asm.selectParamRegister(index, asmType)), Asm.PseudoReg(paramVar.value, size)))
@@ -31,16 +32,9 @@ def codegenFunction(f: Tac.FunctionDef): Asm.FunctionDef = {
     Asm.FunctionDef(f.name, f.isGlobal, asmInstructions)
 }
 
-def codegenTacType(t: Tac.Type): Asm.Type = t match {
-    case Tac.I8()  => Asm.I8()
-    case Tac.I16() => Asm.I16()
-    case Tac.I32() => Asm.I32()
-    case Tac.I64() => Asm.I64()
-}
-
 def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match {
     case Tac.Return(value) =>
-        val t = codegenTacType(getTacValType(value))
+        val t = getTacValType(value)
         List(
           Asm.Mov(codegenTacVal(value), Asm.Register(Asm.selectParamRegister(0, t))),
           Asm.Ret()
@@ -61,12 +55,24 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
         }
     }
 
+    case Tac.ZeroExtend(src, dest) => {
+        val srcType = getTacValType(src)
+        val asmSrc  = codegenTacVal(src)
+        val asmDst  = codegenTacVal(dest)
+        srcType match {
+            case Tac.U8() | Tac.I8()   => List(Asm.Uxtb(asmSrc, asmDst))
+            case Tac.U16() | Tac.I16() => List(Asm.Uxth(asmSrc, asmDst))
+            case Tac.U32() | Tac.I32() => List(Asm.Uxtw(asmSrc, asmDst))
+            case Tac.U64() | Tac.I64() => List(Asm.Mov(asmSrc, asmDst))
+        }
+    }
+
     case Tac.Truncate(src, dest) =>
         List(Asm.Mov(codegenTacVal(src), codegenTacVal(dest)))
 
     case Tac.Unary(Tac.UnaryOp.Not, src, dest) =>
-        val t       = codegenTacType(getTacValType(src))
-        val zeroReg = if (t == Asm.I64()) Asm.Reg.XZR else Asm.Reg.WZR
+        val t       = getTacValType(src)
+        val zeroReg = if (t == Tac.I64()) Asm.Reg.XZR else Asm.Reg.WZR
         List(
           Asm.Compare(codegenTacVal(src), Asm.Register(zeroReg)),
           Asm.ConditionalSet(Asm.ConditionCode.Equal, codegenTacVal(dest))
@@ -92,8 +98,9 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
             case Asm.PseudoReg(name, typ) => Asm.PseudoReg(s"${name}_quot", typ)
             case _                        => Asm.PseudoReg("rem_quot_temp", Size.fromTacType(t))
         }
+        val divOp = if isSigned(t) then Asm.BinaryOp.Div else Asm.BinaryOp.UDiv
         List(
-          Asm.Binary(Asm.BinaryOp.Div, s1, s2, pseudoQuotient),
+          Asm.Binary(divOp, s1, s2, pseudoQuotient),
           Asm.MultiplySubtract(pseudoQuotient, s2, s1, d)
         )
     }
@@ -101,20 +108,20 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
     case Tac.Binary(op, src1, src2, dest) if isRelationalOp(op) => {
         List(
           Asm.Compare(codegenTacVal(src1), codegenTacVal(src2)),
-          Asm.ConditionalSet(convertConditionCode(op), codegenTacVal(dest))
+          Asm.ConditionalSet(convertConditionCode(op, getTacValType(src1)), codegenTacVal(dest))
         )
     }
 
     case Tac.Binary(op, src1, src2, dest) => {
-        List(Asm.Binary(convertBinOp(op), codegenTacVal(src1), codegenTacVal(src2), codegenTacVal(dest)))
+        List(Asm.Binary(convertBinOp(op, getTacValType(dest)), codegenTacVal(src1), codegenTacVal(src2), codegenTacVal(dest)))
     }
 
     case Tac.Label(name)  => List(Asm.Label(name))
     case Tac.Jump(target) => List(Asm.Branch(target.name))
 
     case Tac.JumpIfZero(cond, target) => {
-        val t       = codegenTacType(getTacValType(cond))
-        val zeroReg = if (t == Asm.I64()) Asm.Reg.XZR else Asm.Reg.WZR
+        val t       = getTacValType(cond)
+        val zeroReg = if (t == Tac.I64()) Asm.Reg.XZR else Asm.Reg.WZR
         List(
           Asm.Compare(codegenTacVal(cond), Asm.Register(zeroReg)),
           Asm.ConditionalBranch(Asm.ConditionCode.Equal, target.name)
@@ -122,8 +129,8 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
     }
 
     case Tac.JumpIfNotZero(cond, target) => {
-        val t       = codegenTacType(getTacValType(cond))
-        val zeroReg = if (t == Asm.I64()) Asm.Reg.XZR else Asm.Reg.WZR
+        val t       = getTacValType(cond)
+        val zeroReg = if (t == Tac.I64()) Asm.Reg.XZR else Asm.Reg.WZR
         List(
           Asm.Compare(codegenTacVal(cond), Asm.Register(zeroReg)),
           Asm.ConditionalBranch(Asm.ConditionCode.NotEqual, target.name)
@@ -131,9 +138,9 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
     }
 
     case Tac.FunctionCall(target, args, dest) => {
-        val destType = codegenTacType(getTacValType(dest))
+        val destType = getTacValType(dest)
         val argSetup = args.zipWithIndex.flatMap { case (argVal, index) =>
-            val argType = codegenTacType(getTacValType(argVal))
+            val argType = getTacValType(argVal)
             if (index < 8) {
                 List(Asm.Mov(codegenTacVal(argVal), Asm.Register(Asm.selectParamRegister(index, argType))))
             } else {
@@ -156,20 +163,27 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
 
 def codegenTacVal(v: Tac.Val): Asm.Operand = v match {
     case Tac.Constant(syntax.Const.I8Lit(ival))  => Asm.Imm8(ival.toInt)
+    case Tac.Constant(syntax.Const.U8Lit(uval))  => Asm.Imm8(uval.toInt)
     case Tac.Constant(syntax.Const.I16Lit(lval)) => Asm.Imm16(lval.toInt)
+    case Tac.Constant(syntax.Const.U16Lit(uval)) => Asm.Imm16(uval.toInt)
     case Tac.Constant(syntax.Const.I32Lit(ival)) => Asm.Imm32(ival.toInt)
+    case Tac.Constant(syntax.Const.U32Lit(uval)) => Asm.Imm32(uval.toInt)
     case Tac.Constant(syntax.Const.I64Lit(lval)) => Asm.Imm64(lval.toLong)
+    case Tac.Constant(syntax.Const.U64Lit(uval)) => Asm.Imm64(uval.toLong)
     case Tac.Var(name, tacTyp)                   => Asm.PseudoReg(name, Size.fromTacType(tacTyp))
 }
 
-private def convertConditionCode(op: Tac.BinaryOp): Asm.ConditionCode = op match {
-    case Tac.BinaryOp.Equal          => Asm.ConditionCode.Equal
-    case Tac.BinaryOp.NotEqual       => Asm.ConditionCode.NotEqual
-    case Tac.BinaryOp.LessThan       => Asm.ConditionCode.LessThan
-    case Tac.BinaryOp.LessOrEqual    => Asm.ConditionCode.LessOrEqual
-    case Tac.BinaryOp.GreaterThan    => Asm.ConditionCode.GreaterThan
-    case Tac.BinaryOp.GreaterOrEqual => Asm.ConditionCode.GreaterOrEqual
-    case _                           => throw new RuntimeException(s"$op is not comparison.")
+private def convertConditionCode(op: Tac.BinaryOp, operandType: Tac.Type): Asm.ConditionCode = {
+    val unsigned = !isSigned(operandType)
+    op match {
+        case Tac.BinaryOp.Equal          => Asm.ConditionCode.Equal
+        case Tac.BinaryOp.NotEqual       => Asm.ConditionCode.NotEqual
+        case Tac.BinaryOp.LessThan       => if unsigned then Asm.ConditionCode.CarryClear else Asm.ConditionCode.LessThan
+        case Tac.BinaryOp.LessOrEqual    => if unsigned then Asm.ConditionCode.LowerOrSame else Asm.ConditionCode.LessOrEqual
+        case Tac.BinaryOp.GreaterThan    => if unsigned then Asm.ConditionCode.Higher else Asm.ConditionCode.GreaterThan
+        case Tac.BinaryOp.GreaterOrEqual => if unsigned then Asm.ConditionCode.CarrySet else Asm.ConditionCode.GreaterOrEqual
+        case _                           => throw new RuntimeException(s"$op is not a comparison.")
+    }
 }
 
 private def convertUnOp(op: Tac.UnaryOp): Asm.UnaryOp = op match {
@@ -177,16 +191,16 @@ private def convertUnOp(op: Tac.UnaryOp): Asm.UnaryOp = op match {
     case Tac.UnaryOp.Negate     => Asm.UnaryOp.Neg
 }
 
-private def convertBinOp(op: Tac.BinaryOp): Asm.BinaryOp = op match {
+private def convertBinOp(op: Tac.BinaryOp, destType: Tac.Type): Asm.BinaryOp = op match {
     case Tac.BinaryOp.Add      => Asm.BinaryOp.Add
     case Tac.BinaryOp.Subtract => Asm.BinaryOp.Sub
     case Tac.BinaryOp.Multiply => Asm.BinaryOp.Mult
-    case Tac.BinaryOp.Divide   => Asm.BinaryOp.Div
+    case Tac.BinaryOp.Divide   => if isSigned(destType) then Asm.BinaryOp.Div else Asm.BinaryOp.UDiv
     case Tac.BinaryOp.BitAnd   => Asm.BinaryOp.BitAnd
     case Tac.BinaryOp.BitOr    => Asm.BinaryOp.BitOr
     case Tac.BinaryOp.BitXor   => Asm.BinaryOp.BitXor
     case Tac.BinaryOp.LShift   => Asm.BinaryOp.Lsl
-    case Tac.BinaryOp.RShift   => Asm.BinaryOp.Asr
+    case Tac.BinaryOp.RShift   => if isSigned(destType) then Asm.BinaryOp.Asr else Asm.BinaryOp.Lsr
     case _                     => throw new RuntimeException(s"Unmappable: $op")
 }
 

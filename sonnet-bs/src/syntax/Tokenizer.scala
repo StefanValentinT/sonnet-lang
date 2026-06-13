@@ -26,6 +26,10 @@ case class KwI8()  extends Token
 case class KwI16() extends Token
 case class KwI32() extends Token
 case class KwI64() extends Token
+case class KwU8()  extends Token
+case class KwU16() extends Token
+case class KwU32() extends Token
+case class KwU64() extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -84,6 +88,10 @@ case class TokI8Lit(value: BigInt)     extends Token
 case class TokI16Lit(value: BigInt)    extends Token
 case class TokI32Lit(value: BigInt)    extends Token
 case class TokI64Lit(value: BigInt)    extends Token
+case class TokU8Lit(value: BigInt)     extends Token
+case class TokU16Lit(value: BigInt)    extends Token
+case class TokU32Lit(value: BigInt)    extends Token
+case class TokU64Lit(value: BigInt)    extends Token
 case class TokStringLit(value: String) extends Token
 
 class TokenizerError(detail: String) extends CompilerError("Tokenizer", detail)
@@ -117,6 +125,10 @@ class Tokenizer(input: String) {
       (Word("i16"), _ => KwI16()),
       (Word("i32"), _ => KwI32()),
       (Word("i64"), _ => KwI64()),
+      (Word("u8"), _ => KwU8()),
+      (Word("u16"), _ => KwU16()),
+      (Word("u32"), _ => KwU32()),
+      (Word("u64"), _ => KwU64()),
       (Word("int"), _ => KwI32()),
       (Word("long"), _ => KwI64()),
       (Word("as"), _ => OpAs()),
@@ -208,6 +220,50 @@ class Tokenizer(input: String) {
                 throw TokenizerError(s"64-bit integer literal '$s' exceeds allowable i64 bounds.")
             }
             TokI64Lit(bigNum)
+        }
+      ),
+      (
+        RegexPat("\\d+u8"),
+        s => {
+            val numStr = s.stripSuffix("u8")
+            val bigNum = BigInt(numStr)
+            if (bigNum > BigInt(2).pow(8) || bigNum < 0) {
+                throw TokenizerError(s"8-bit unsigned integer literal '$s' exceeds allowable u8 bounds.")
+            }
+            TokU8Lit(bigNum)
+        }
+      ),
+      (
+        RegexPat("\\d+u16"),
+        s => {
+            val numStr = s.stripSuffix("u16")
+            val bigNum = BigInt(numStr)
+            if (bigNum > BigInt(2).pow(16) || bigNum < 0) {
+                throw TokenizerError(s"16-bit unsigned integer literal '$s' exceeds allowable u16 bounds.")
+            }
+            TokU16Lit(bigNum)
+        }
+      ),
+      (
+        RegexPat("\\d+u32"),
+        s => {
+            val numStr = s.stripSuffix("u32")
+            val bigNum = BigInt(numStr)
+            if (bigNum > BigInt(2).pow(32) || bigNum < 0) {
+                throw TokenizerError(s"32-bit unsigned integer literal '$s' exceeds allowable u32 bounds.")
+            }
+            TokU32Lit(bigNum)
+        }
+      ),
+      (
+        RegexPat("\\d+u64"),
+        s => {
+            val numStr = s.stripSuffix("u64")
+            val bigNum = BigInt(numStr)
+            if (bigNum > BigInt(2).pow(64) || bigNum < 0) {
+                throw TokenizerError(s"64-bit unsigned integer literal '$s' exceeds allowable u64 bounds.")
+            }
+            TokU64Lit(bigNum)
         }
       ),
       (

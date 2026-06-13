@@ -152,6 +152,15 @@ object TypeChecker {
                 Typed.Constant(Const.I32Lit(value), I32())
             case Constant(Const.I64Lit(value)) =>
                 Typed.Constant(Const.I64Lit(value), I64())
+
+            case Constant(Const.U8Lit(value)) =>
+                Typed.Constant(Const.U8Lit(value), U8())
+            case Constant(Const.U16Lit(value)) =>
+                Typed.Constant(Const.U16Lit(value), U16())
+            case Constant(Const.U32Lit(value)) =>
+                Typed.Constant(Const.U32Lit(value), U32())
+            case Constant(Const.U64Lit(value)) =>
+                Typed.Constant(Const.U64Lit(value), U64())
             case Var(name) =>
                 symbols.get(name) match {
                     case Some(FunType(_, _)) => throw CheckedError
@@ -252,8 +261,8 @@ object TypeChecker {
     }
 
     private def isNumericType(t: Type): Boolean = t match {
-        case I8() | I16() | I32() | I64() => true
-        case _                            => false
+        case I8() | I16() | I32() | I64() | U8() | U16() | U32() | U64() => true
+        case _                                                           => false
     }
 
     private def isComparisonOp(op: BinaryOp): Boolean =

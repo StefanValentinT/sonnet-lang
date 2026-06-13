@@ -155,6 +155,11 @@ class Parser(tokenizer: Tokenizer) {
             case Some(KwI32()) => I32()
             case Some(KwI64()) => I64()
 
+            case Some(KwU8())  => U8()
+            case Some(KwU16()) => U16()
+            case Some(KwU32()) => U32()
+            case Some(KwU64()) => U64()
+
             case Some(LParen()) => {
                 val params = new ListBuffer[Type]()
 
@@ -273,6 +278,12 @@ class Parser(tokenizer: Tokenizer) {
     def parseFactor(directNegation: Boolean = false): Expression = {
         tokenizer.next() match {
             case Some(LBrace()) => parseBlock()
+
+            case Some(TokU8Lit(value))  => Constant(Const.U8Lit(value))
+            case Some(TokU16Lit(value)) => Constant(Const.U16Lit(value))
+            case Some(TokU32Lit(value)) => Constant(Const.U32Lit(value))
+            case Some(TokU64Lit(value)) => Constant(Const.U64Lit(value))
+
             case Some(TokI8Lit(value)) =>
                 if (!directNegation) {
                     val max = BigInt(2).pow(7) - 1

@@ -22,6 +22,9 @@ object Asm {
     case class Sextb(src: Operand, dest: Operand)                                extends Instruction
     case class Sexth(src: Operand, dest: Operand)                                extends Instruction
     case class Sextw(src: Operand, dest: Operand)                                extends Instruction
+    case class Uxtb(src: Operand, dest: Operand)                                 extends Instruction
+    case class Uxth(src: Operand, dest: Operand)                                 extends Instruction
+    case class Uxtw(src: Operand, dest: Operand)                                 extends Instruction
     case class AllocateStack(size: Int)                                          extends Instruction
     case class DeallocateStack(size: Int)                                        extends Instruction
     case class Push(src: Operand)                                                extends Instruction
@@ -45,12 +48,6 @@ object Asm {
     case class PseudoReg(name: String, size: Size) extends Operand
     case class StackSlot(offset: Int, size: Size)  extends Operand
     case class Data(location: String, size: Size)  extends Operand
-
-    abstract sealed class Type
-    case class I8()  extends Type
-    case class I16() extends Type
-    case class I32() extends Type
-    case class I64() extends Type
 
     def getOperandSize(op: Asm.Operand): Size = op match {
         case Asm.Imm8(_)            => Size.Byte1
@@ -99,13 +96,13 @@ object Asm {
     }
     val paramRegisters = List(Asm.Reg.W0, Asm.Reg.W1, Asm.Reg.W2, Asm.Reg.W3, Asm.Reg.W4, Asm.Reg.W5, Asm.Reg.W6, Asm.Reg.W7)
 
-    def selectParamRegister(index: Int, t: Asm.Type): Asm.Reg = {
+    def selectParamRegister(index: Int, t: Tac.Type): Asm.Reg = {
         val base = Asm.paramRegisters(index)
         t match {
-            case Asm.I8()  => base.to32
-            case Asm.I16() => base.to32
-            case Asm.I32() => base.to32
-            case Asm.I64() => base.to64
+            case Tac.I8() | Tac.U8()   => base.to32
+            case Tac.I16() | Tac.U16() => base.to32
+            case Tac.I32() | Tac.U32() => base.to32
+            case Tac.I64() | Tac.U64() => base.to64
         }
     }
 
@@ -113,14 +110,22 @@ object Asm {
         case Neg, Not
     }
 
-    enum BinaryOp { case Add, Sub, Mult, Div, BitAnd, BitOr, BitXor, Lsl, Asr }
+    enum BinaryOp { case Add, Sub, Mult, Div, UDiv, BitAnd, BitOr, BitXor, Lsl, Asr, Lsr }
 
     enum ConditionCode {
         case Equal,
             NotEqual,
+
+            // Signed
             LessThan,
             LessOrEqual,
             GreaterThan,
-            GreaterOrEqual
+            GreaterOrEqual,
+
+            // Unsigned
+            CarryClear,
+            LowerOrSame,
+            CarrySet,
+            Higher,
     }
 }

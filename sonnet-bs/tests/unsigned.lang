@@ -1,0 +1,49 @@
+printsl_u8   : (u8) -> i32;
+printsl_u16  : (u16) -> i32;
+printsl_u32  : (u32) -> i32;
+printsl_u64  : (u64) -> i32;
+printsl_i8   : (i8) -> i32;
+printsl_i16  : (i16) -> i32;
+printsl_i32  : (i32) -> i32;
+
+fun main() i32 {
+	var u8_max  : u8  = 255u8;
+	var u16_max : u16 = 65535u16;
+	var u32_max : u32 = 4294967295u32;
+	var u64_max : u64 = 18446744073709551615u64;
+
+	printsl_u8(u8_max);   # Expected: 255
+	printsl_u16(u16_max); # Expected: 65535
+	printsl_u32(u32_max); # Expected: 4294967295
+	printsl_u64(u64_max); # Expected: 18446744073709551615
+
+	var w_u16 : u16 = u8_max as u16;
+	printsl_u16(w_u16);
+
+	var w_u32 : u32 = u16_max as u32;
+	printsl_u32(w_u32);
+
+	var w_u64 : u64 = u32_max as u64;
+	printsl_u64(w_u64);
+
+	# Casting an unsigned max value into an equivalent-sized signed type yields -1
+	var s8_neg1 : i8 = u8_max as i8;
+	printsl_i8(s8_neg1); # Expected: -1
+
+	var s16_neg1 : i16 = u16_max as i16;
+	printsl_i16(s16_neg1); # Expected: -1
+
+	var s32_neg1 : i32 = u32_max as i32;
+	printsl_i32(s32_neg1); # Expected: -1
+
+
+	var t_u32 : u32 = 257u32;
+	var n_u8  : u8  = t_u32 as u8;
+	printsl_u8(n_u8);
+
+	var t_u64 : u64 = 70000u64;
+	var n_u16 : u16 = t_u64 as u16;
+	printsl_u16(n_u16);
+
+	0
+};

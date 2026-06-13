@@ -163,16 +163,16 @@ object PseudoRegisterReplacer {
         }
     }
 
-    private def expandSignExtend(extType: String, src: Asm.Operand, dest: Asm.Operand): List[Asm.Instruction] = {
+    private def expandExtend(srcSize: Size, isSigned: Boolean, src: Asm.Operand, dest: Asm.Operand): List[Asm.Instruction] = {
         val resolvedSrc  = replaceOperand(src)
         val resolvedDest = replaceOperand(dest)
         val buffer       = ListBuffer[Asm.Instruction]()
 
-        val srcSize  = Asm.getOperandSize(resolvedSrc)
-        val destSize = Asm.getOperandSize(resolvedDest)
+        val actualSrcSize  = Asm.getOperandSize(resolvedSrc)
+        val actualDestSize = Asm.getOperandSize(resolvedDest)
 
-        val scratchSrc  = if (srcSize == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-        val scratchDest = if (destSize == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
+        val scratchSrc  = if (actualSrcSize == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+        val scratchDest = if (actualDestSize == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
 
         val regSrc = ensureReg(resolvedSrc, scratchSrc, buffer)
 
@@ -181,10 +181,14 @@ object PseudoRegisterReplacer {
             case _               => Asm.Register(scratchDest)
         }
 
-        extType match {
-            case "b" => buffer += Asm.Sextb(regSrc, targetReg)
-            case "h" => buffer += Asm.Sexth(regSrc, targetReg)
-            case "w" => buffer += Asm.Sextw(regSrc, targetReg)
+        (srcSize, isSigned) match {
+            case (Size.Byte1, true)  => buffer += Asm.Sextb(regSrc, targetReg)
+            case (Size.Byte2, true)  => buffer += Asm.Sexth(regSrc, targetReg)
+            case (Size.Byte4, true)  => buffer += Asm.Sextw(regSrc, targetReg)
+            case (Size.Byte1, false) => buffer += Asm.Uxtb(regSrc, targetReg)
+            case (Size.Byte2, false) => buffer += Asm.Uxth(regSrc, targetReg)
+            case (Size.Byte4, false) => buffer += Asm.Uxtw(regSrc, targetReg)
+            case _                   => throw new RuntimeException(s"Unsupported extend source size: $srcSize")
         }
 
         if (resolvedDest.isInstanceOf[Asm.StackSlot]) {
@@ -208,6 +212,9 @@ object PseudoRegisterReplacer {
             case Asm.Sextb(src, dest)                => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Sexth(src, dest)                => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Sextw(src, dest)                => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.Uxtb(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.Uxth(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.Uxtw(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Unary(_, operand)               => registerOperandOffsets(operand)
             case Asm.Binary(_, s1, s2, d)            => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(d)
             case Asm.MultiplySubtract(s1, s2, s3, d) => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(s3); registerOperandOffsets(d)
@@ -221,10 +228,16 @@ object PseudoRegisterReplacer {
         val alignedBytes = if (totalBytes > 0) arm64.pad16(totalBytes) else 0
 
         var newInstructions = f.instructions.flatMap {
-            case Asm.Mov(src, dest)   => expandMov(src, dest)
-            case Asm.Sextb(src, dest) => expandSignExtend("b", src, dest)
-            case Asm.Sexth(src, dest) => expandSignExtend("h", src, dest)
-            case Asm.Sextw(src, dest) => expandSignExtend("w", src, dest)
+            case Asm.Mov(src, dest) => expandMov(src, dest)
+
+            case Asm.Sextb(src, dest) => expandExtend(Size.Byte1, true, src, dest)
+            case Asm.Sexth(src, dest) => expandExtend(Size.Byte2, true, src, dest)
+            case Asm.Sextw(src, dest) => expandExtend(Size.Byte4, true, src, dest)
+
+            case Asm.Uxtb(src, dest) => expandExtend(Size.Byte1, false, src, dest)
+            case Asm.Uxth(src, dest) => expandExtend(Size.Byte2, false, src, dest)
+            case Asm.Uxtw(src, dest) => expandExtend(Size.Byte4, false, src, dest)
+
             case Asm.Unary(op, operand) => {
                 val buffer     = ListBuffer[Asm.Instruction]()
                 val newOperand = replaceOperand(operand)

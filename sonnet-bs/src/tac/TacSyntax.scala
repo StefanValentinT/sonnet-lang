@@ -18,6 +18,7 @@ object Tac {
     abstract sealed class Instruction
     case class Return(value: Val)                                          extends Instruction
     case class SignExtend(src: Val, dest: Val)                             extends Instruction
+    case class ZeroExtend(src: Val, dest: Val)                             extends Instruction
     case class Truncate(src: Val, dest: Val)                               extends Instruction
     case class Unary(unaryOp: UnaryOp, src: Val, dest: Val)                extends Instruction
     case class Binary(binaryOp: BinaryOp, src1: Val, src2: Val, dest: Val) extends Instruction
@@ -37,6 +38,12 @@ object Tac {
     case class I16() extends Type
     case class I32() extends Type
     case class I64() extends Type
+    case class U8()  extends Type
+    case class U16() extends Type
+    case class U32() extends Type
+    case class U64() extends Type
+
+    object Type {}
 
     enum UnaryOp {
         case Complement, Negate, Not
@@ -56,6 +63,11 @@ def getTacValType(t: Tac.Val): Tac.Type = t match {
     case Tac.Constant(Const.I16Lit(_)) => Tac.I16()
     case Tac.Constant(Const.I32Lit(_)) => Tac.I32()
     case Tac.Constant(Const.I64Lit(_)) => Tac.I64()
+}
+
+def isSigned(t: Tac.Type): Boolean = t match {
+    case Tac.I16() | Tac.I32() | Tac.I64() | Tac.I8() => true
+    case Tac.U16() | Tac.U32() | Tac.U64() | Tac.U8() => false
 }
 
 class TacEmitterError(detail: String) extends CompilerError("Three-address-code generator", detail)
@@ -105,6 +117,11 @@ class TacEmitter(prog: Typed.Program) {
         case I16() => Tac.Constant(Const.I16Lit(0))
         case I32() => Tac.Constant(Const.I32Lit(0))
         case I64() => Tac.Constant(Const.I64Lit(0))
+
+        case U8()  => Tac.Constant(Const.U8Lit(0))
+        case U16() => Tac.Constant(Const.U16Lit(0))
+        case U32() => Tac.Constant(Const.U32Lit(0))
+        case U64() => Tac.Constant(Const.U64Lit(0))
     }
 
     private def convertType(t: Type): Tac.Type = t match {
@@ -112,7 +129,13 @@ class TacEmitter(prog: Typed.Program) {
         case I16() => Tac.I16()
         case I32() => Tac.I32()
         case I64() => Tac.I64()
-        case _     => throw TacEmitterError("Not all types are supported in the backend yet.")
+
+        case U8()  => Tac.U8()
+        case U16() => Tac.U16()
+        case U32() => Tac.U32()
+        case U64() => Tac.U64()
+
+        case _ => throw TacEmitterError("Not all types are supported in the backend yet.")
     }
 
     private def isGlobal(linkage: Linkage): Boolean =
@@ -224,18 +247,25 @@ class TacEmitter(prog: Typed.Program) {
         }
 
         case Typed.Cast(exp, targetType) => {
-            val res     = emitExpressionTac(exp)
+            val res = emitExpressionTac(exp)
+
             val srcType = getTacValType(res)
-            if targetType == srcType then {
+            val srcSize = Size.fromTacType(srcType).bits
+
+            val destType = convertType(targetType)
+            val dest     = newTemp(destType)
+            val destSize = Size.fromTacType(destType).bits
+
+            if destSize == srcSize then {
                 res
+            } else if destSize < srcSize then {
+                instructions += Tac.Truncate(res, dest)
+                dest
+            } else if isSigned(srcType) then {
+                instructions += Tac.SignExtend(res, dest)
+                dest
             } else {
-                val destType = convertType(targetType)
-                val dest     = newTemp(destType)
-                if Size.fromTacType(destType).bits > Size.fromTacType(srcType).bits then {
-                    instructions += Tac.SignExtend(res, dest)
-                } else {
-                    instructions += Tac.Truncate(res, dest)
-                }
+                instructions += Tac.ZeroExtend(res, dest)
                 dest
             }
         }

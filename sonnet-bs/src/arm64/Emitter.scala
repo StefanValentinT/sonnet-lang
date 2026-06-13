@@ -9,7 +9,7 @@ class Emitter() {
 
     def emitProgram(p: Asm.Program): String = {
         val staticVars                     = p.items.collect { case v: Asm.StaticVariable => v }
-        val (initialized, zeroInitialized) = staticVars.partition(v => v.init != syntax.Const.I32Lit(0) && v.init != syntax.Const.I64Lit(0))
+        val (initialized, zeroInitialized) = staticVars.partition(v => v.init.getValue != 0)
 
         if (initialized.nonEmpty) {
             sb.append(".data\n")
@@ -19,17 +19,15 @@ class Emitter() {
                         sb.append(s".global _${name}\n")
                     }
                     val asmDirective = alignment match {
-                        case Size.Byte8 => ".quad"
+                        case Size.Byte1 => ".byte"
+                        case Size.Byte2 => ".short"
                         case Size.Byte4 => ".word"
+                        case Size.Byte8 => ".quad"
                     }
                     sb.append(s".p2align ${calculateP2Align(alignment.bytes)}\n")
                     sb.append(s"_$name:\n")
 
-                    val numValue = init match {
-                        case syntax.Const.I32Lit(n) => n
-                        case syntax.Const.I64Lit(n) => n
-                    }
-                    sb.append(s"    $asmDirective $numValue\n\n")
+                    sb.append(s"    $asmDirective ${init.getValue}\n\n")
                 }
             }
         }
@@ -146,10 +144,27 @@ class Emitter() {
             }
         }
 
-        case Asm.Mov(src, dest)   => inst(s"mov ${showOp(dest)}, ${showOp(src)}")
+        case Asm.Mov(src, dest) => {
+            src match {
+                case Asm.Imm64(ival) if ival > (BigInt(2).pow(16) - 1) || ival < 0L =>
+                    inst(s"ldr ${showOp(dest)}, =$ival")
+
+                case Asm.Imm32(ival) if ival > (BigInt(2).pow(16) - 1) || ival < 0 =>
+                    inst(s"ldr ${showOp(dest)}, =$ival")
+
+                case _ =>
+                    inst(s"mov ${showOp(dest)}, ${showOp(src)}")
+            }
+        }
+
         case Asm.Sextb(src, dest) => inst(s"sxtb ${showOp(dest)}, ${showOp(src)}")
         case Asm.Sexth(src, dest) => inst(s"sxth ${showOp(dest)}, ${showOp(src)}")
         case Asm.Sextw(src, dest) => inst(s"sxtw ${showOp(dest)}, ${showOp(src)}")
+
+        case Asm.Uxtb(src, dest) => inst(s"uxtb ${showOp(dest)}, ${showOp(src)}")
+        case Asm.Uxth(src, dest) => inst(s"uxth ${showOp(dest)}, ${showOp(src)}")
+        case Asm.Uxtw(src, dest) => inst(s"uxtw ${showOp(dest)}, ${showOp(src)}")
+
         case Asm.Ret() => {
             inst("mov sp, x29\n")
             inst("ldp x29, x30, [sp], #16\n")
@@ -165,11 +180,13 @@ class Emitter() {
                 case Asm.BinaryOp.Sub    => "sub"
                 case Asm.BinaryOp.Mult   => "mul"
                 case Asm.BinaryOp.Div    => "sdiv"
+                case Asm.BinaryOp.UDiv   => "udiv"
                 case Asm.BinaryOp.BitAnd => "and"
                 case Asm.BinaryOp.BitOr  => "orr"
                 case Asm.BinaryOp.BitXor => "eor"
                 case Asm.BinaryOp.Lsl    => "lsl"
                 case Asm.BinaryOp.Asr    => "asr"
+                case Asm.BinaryOp.Lsr    => "lsr"
             }
             inst(s"$mnemonic ${showOp(d)}, ${showOp(s1)}, ${showOp(s2)}")
         }
@@ -237,11 +254,17 @@ class Emitter() {
     }
 
     private def showConditionCode(cc: Asm.ConditionCode): String = cc match {
-        case Asm.ConditionCode.Equal          => "eq"
-        case Asm.ConditionCode.NotEqual       => "ne"
+        case Asm.ConditionCode.Equal    => "eq"
+        case Asm.ConditionCode.NotEqual => "ne"
+
         case Asm.ConditionCode.LessThan       => "lt"
         case Asm.ConditionCode.LessOrEqual    => "le"
         case Asm.ConditionCode.GreaterThan    => "gt"
         case Asm.ConditionCode.GreaterOrEqual => "ge"
+
+        case Asm.ConditionCode.CarryClear  => "cc"
+        case Asm.ConditionCode.LowerOrSame => "ls"
+        case Asm.ConditionCode.CarrySet    => "cs"
+        case Asm.ConditionCode.Higher      => "hi"
     }
 }

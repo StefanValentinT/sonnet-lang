@@ -39,6 +39,10 @@ case class I8()                                   extends Type
 case class I16()                                  extends Type
 case class I32()                                  extends Type
 case class I64()                                  extends Type
+case class U8()                                   extends Type
+case class U16()                                  extends Type
+case class U32()                                  extends Type
+case class U64()                                  extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
 
 enum Const {
@@ -46,6 +50,22 @@ enum Const {
     case I16Lit(value: BigInt)
     case I32Lit(value: BigInt)
     case I64Lit(value: BigInt)
+
+    case U8Lit(value: BigInt)
+    case U16Lit(value: BigInt)
+    case U32Lit(value: BigInt)
+    case U64Lit(value: BigInt)
+
+    def getValue: BigInt = this match {
+        case syntax.Const.I8Lit(n)  => n
+        case syntax.Const.I16Lit(n) => n
+        case syntax.Const.I32Lit(n) => n
+        case syntax.Const.I64Lit(n) => n
+        case syntax.Const.U8Lit(n)  => n
+        case syntax.Const.U16Lit(n) => n
+        case syntax.Const.U32Lit(n) => n
+        case syntax.Const.U64Lit(n) => n
+    }
 }
 
 enum UnaryOp {
@@ -78,5 +98,10 @@ object Size {
             case Tac.I16() => Byte2
             case Tac.I32() => Byte4
             case Tac.I64() => Byte8
+
+            case Tac.U8()  => Byte1
+            case Tac.U16() => Byte2
+            case Tac.U32() => Byte4
+            case Tac.U64() => Byte8
         }
 }
