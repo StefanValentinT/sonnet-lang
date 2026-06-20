@@ -23,17 +23,18 @@ case class KwBreak()    extends Token
 case class KwContinue() extends Token
 case class KwDo()       extends Token
 
-case class KwI8()  extends Token
-case class KwI16() extends Token
-case class KwI32() extends Token
-case class KwI64() extends Token
-case class KwU8()  extends Token
-case class KwU16() extends Token
-case class KwU32() extends Token
-case class KwU64() extends Token
-case class KwF16() extends Token
-case class KwF32() extends Token
-case class KwF64() extends Token
+case class KwI8()   extends Token
+case class KwI16()  extends Token
+case class KwI32()  extends Token
+case class KwI64()  extends Token
+case class KwU8()   extends Token
+case class KwU16()  extends Token
+case class KwU32()  extends Token
+case class KwU64()  extends Token
+case class KwF16()  extends Token
+case class KwF32()  extends Token
+case class KwF64()  extends Token
+case class KwBool() extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -100,6 +101,8 @@ case class TokF16Lit(value: BigDecimal) extends Token
 case class TokF32Lit(value: BigDecimal) extends Token
 case class TokF64Lit(value: BigDecimal) extends Token
 case class TokStringLit(value: String)  extends Token
+case class TokTrue()                    extends Token
+case class TokFalse()                   extends Token
 
 class TokenizerError(detail: String) extends CompilerError("Tokenizer", detail)
 
@@ -142,6 +145,9 @@ class Tokenizer(input: String) {
       (Word("f64"), _ => KwF64()),
       (Word("int"), _ => KwI32()),
       (Word("long"), _ => KwI64()),
+      (Word("bool"), _ => KwBool()),
+      (Word("true"), _ => TokTrue()),
+      (Word("false"), _ => TokFalse()),
       (Word("as"), _ => OpAs()),
       (Lit("<<="), _ => OpLShiftAssign()),
       (Lit(">>="), _ => OpRShiftAssign()),
@@ -177,6 +183,7 @@ class Tokenizer(input: String) {
       (Lit("|"), _ => OpOr()),
       (Lit("&"), _ => OpAnd()),
       (Lit("~"), _ => OpTilde()),
+      (Lit("!"), _ => OpNot()),
       (Lit("."), _ => OpDot()),
       (Lit("+"), _ => OpPlus()),
       (Lit("-"), _ => OpMinus()),

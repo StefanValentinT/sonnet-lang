@@ -1,4 +1,4 @@
-print_i32 : (i32) -> i32;
+import ../stdlib/print.lang;
 
 # expected stdout:
 # 12

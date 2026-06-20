@@ -213,6 +213,8 @@ class Parser(tokenizer: Tokenizer) {
             case Some(KwF32()) => F32()
             case Some(KwF64()) => F64()
 
+            case Some(KwBool()) => Bool()
+
             case Some(LParen()) => {
                 val params = new ListBuffer[Type]()
 
@@ -232,7 +234,7 @@ class Parser(tokenizer: Tokenizer) {
 
                 FunType(params.toList, returnType)
             }
-            case _ => throw ParserError("Invalid type.")
+            case t => throw ParserError(s"No type can be constructed from token $t.")
         }
 
     def precedence(t: Token): Int = t match {
@@ -331,6 +333,9 @@ class Parser(tokenizer: Tokenizer) {
     def parseFactor(directNegation: Boolean = false): Expression = {
         tokenizer.next() match {
             case Some(LBrace()) => parseBlock()
+
+            case Some(TokTrue())  => TrueExpr()
+            case Some(TokFalse()) => FalseExpr()
 
             case Some(TokU8Lit(value))  => Constant(Const.U8Lit(value))
             case Some(TokU16Lit(value)) => Constant(Const.U16Lit(value))

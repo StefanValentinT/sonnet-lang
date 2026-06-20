@@ -103,6 +103,8 @@ object VariableResolver {
             }
             case e @ Continue(_)        => e
             case e @ Break(_)           => e
+            case t @ TrueExpr()         => t
+            case f @ FalseExpr()        => f
             case While(cond, exp, l)    => While(resolveExpression(cond, variableMap), resolveExpression(exp, variableMap), l)
             case If(cond, thenB, elseB) => If(resolveExpression(cond, variableMap), resolveExpression(thenB, variableMap), if elseB.isDefined then Some(resolveExpression(elseB.get, variableMap)) else None)
             case Constant(value)        => Constant(value)

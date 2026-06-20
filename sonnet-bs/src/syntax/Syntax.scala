@@ -31,6 +31,8 @@ case class Return(exp: Expression)                                              
 case class Break(label: String)                                                         extends Expression
 case class Continue(label: String)                                                      extends Expression
 case class While(cond: Expression, body: Expression, label: String)                     extends Expression
+case class TrueExpr()                                                                   extends Expression
+case class FalseExpr()                                                                  extends Expression
 case class FunctionCall(target: String, args: List[Expression])                         extends Expression
 // creates a new scope so no circular dependency between expression and statement
 case class Block(statements: List[Statement], exp: Option[Expression]) extends Expression
@@ -47,6 +49,7 @@ case class U64()                                  extends Type
 case class F16()                                  extends Type
 case class F32()                                  extends Type
 case class F64()                                  extends Type
+case class Bool()                                 extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
 
 enum Const {

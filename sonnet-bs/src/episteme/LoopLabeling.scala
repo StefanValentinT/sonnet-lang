@@ -102,6 +102,8 @@ object LoopLabeler {
             case FunctionCall(target, args) => FunctionCall(target, args.map(labelExpression(_, currentLabel)))
             case c @ Constant(_)            => c
             case v @ Var(_)                 => v
+            case t @ TrueExpr()             => t
+            case f @ FalseExpr()            => f
         }
     }
 }

@@ -31,6 +31,8 @@ object Typed {
     case class While(cond: Expression, body: Expression, label: String, typ: Type)                     extends Expression
     case class FunctionCall(target: String, args: List[Expression], typ: Type)                         extends Expression
     case class Block(statements: List[Statement], exp: Option[Expression], typ: Type)                  extends Expression
+    case class TrueExpr()                                                                              extends Expression
+    case class FalseExpr()                                                                             extends Expression
 }
 
 def getTypedType(expr: Typed.Expression): Type =
@@ -48,6 +50,8 @@ def getTypedType(expr: Typed.Expression): Type =
         case Typed.While(_, _, _, t)     => t
         case Typed.FunctionCall(_, _, t) => t
         case Typed.Block(_, _, t)        => t
+        case Typed.TrueExpr()            => Bool()
+        case Typed.FalseExpr()           => Bool()
     }
 
 val CheckedError = EpistemicError("This has been checked in variable resolution pass.")
@@ -168,6 +172,10 @@ object TypeChecker {
                 Typed.Constant(Const.U32Lit(value), U32())
             case Constant(Const.U64Lit(value)) =>
                 Typed.Constant(Const.U64Lit(value), U64())
+
+            case TrueExpr()  => Typed.TrueExpr()
+            case FalseExpr() => Typed.FalseExpr()
+
             case Var(name) =>
                 symbols.get(name) match {
                     case Some(FunType(_, _)) => throw CheckedError
@@ -203,12 +211,9 @@ object TypeChecker {
             case Unary(op, e) => {
                 val typedExpr = typecheckExpression(e)
                 val t         = getTypedType(typedExpr)
-                if (!isNumericType(t)) {
-                    throw EpistemicError("Unary operator expects integer value.")
-                }
                 op match {
-                    case UnaryOp.Complement => if !(isIntegerType(t)) then throw EpistemicError(s"Complement requires integer types, found: $t.")
-                    case _                  => ()
+                    case UnaryOp.Complement | UnaryOp.Negate => if !(isIntegerType(t)) then throw EpistemicError(s"Complement requires integer types, found: $t.")
+                    case UnaryOp.Not                         => if t != Bool() then throw EpistemicError(s"Logical not requires bool type, found: $t.")
                 }
                 Typed.Unary(op, typedExpr, t)
             }
@@ -224,11 +229,12 @@ object TypeChecker {
                     throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
                 }
                 op match {
-                    case BinaryOp.Remainder => if !(isIntegerType(t1) && isIntegerType(t1)) then throw EpistemicError(s"Remainder operator requires integer types, found: $t1.")
-                    case _                  => ()
+                    case BinaryOp.Add | BinaryOp.Divide | BinaryOp.Subtract | BinaryOp.Multiply => if (!isNumericType(t1)) then throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
+                    case BinaryOp.Remainder                                                     => if !(isIntegerType(t1)) then throw EpistemicError(s"Remainder operator requires integer types, found: $t1.")
+                    case BinaryOp.And | BinaryOp.Or                                             => if t1 != Bool() then throw EpistemicError(s"Logical operators require bool type, found: $t1.")
                 }
                 if (isComparisonOp(op)) {
-                    Typed.Binary(op, typedE1, typedE2, I32())
+                    Typed.Binary(op, typedE1, typedE2, Bool())
                 } else {
                     Typed.Binary(op, typedE1, typedE2, t1)
                 }
@@ -238,8 +244,8 @@ object TypeChecker {
                 val typedCond = typecheckExpression(cond)
                 val typedThen = typecheckExpression(thenBranch)
                 val typedElse = elseBranch.map({ (e) => typecheckExpression(e) })
-                if (getTypedType(typedCond) != I32()) {
-                    throw EpistemicError("If condition statement must evaluate to an I32.")
+                if (getTypedType(typedCond) != Bool()) {
+                    throw EpistemicError("If condition statement must evaluate to a Boolean.")
                 }
                 typedElse match {
                     case Some(e) if getTypedType(typedThen) != getTypedType(e) =>

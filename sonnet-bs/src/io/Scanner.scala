@@ -12,7 +12,8 @@ object FileScanner {
         try {
             Files.readString(Path.of(filePath))
         } catch {
-            case _: IOException | _: NullPointerException => throw new IOError("Input impossible.")
+            case e @ (_: IOException | _: NullPointerException) =>
+                throw new IOError(s"Input impossible. Reason: ${e.getMessage}")
         }
     }
 }

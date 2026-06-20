@@ -80,6 +80,8 @@ class TacEmitter(prog: Typed.Program) {
         case F32() => Tac.F32()
         case F64() => Tac.F64()
 
+        case Bool() => Tac.I8()
+
         case _ => throw TacEmitterError("Not all types are supported in the backend yet.")
     }
 
@@ -90,6 +92,10 @@ class TacEmitter(prog: Typed.Program) {
         }
 
     def emitExpressionTac(e: Typed.Expression): Tac.Val = e match {
+
+        case Typed.TrueExpr()  => Tac.Constant(Const.I8Lit(1))
+        case Typed.FalseExpr() => Tac.Constant(Const.I8Lit(0))
+
         case Typed.Constant(value, typ) =>
             Tac.Constant(value)
         case Typed.Var(value, typ) =>
@@ -297,6 +303,8 @@ class TacEmitter(prog: Typed.Program) {
 
                     val initConst = init match {
                         case Some(Typed.Constant(value, _)) => value
+                        case Some(Typed.TrueExpr())         => Const.I8Lit(1)
+                        case Some(Typed.FalseExpr())        => Const.I8Lit(0)
                         // initialization with default value
                         case None =>
                             typ match {

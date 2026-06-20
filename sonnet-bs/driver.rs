@@ -34,17 +34,27 @@ fn main() {
         .and_then(|s| s.to_str())
         .unwrap_or(input);
 
-    let pipeline = Some(())
-        .and_then(|_| {
-            let mut cmd = Command::new("mill");
-            cmd.arg("--bsp-install");
-            run_cmd(cmd, quiet)
-        })
-        .and_then(|_| {
-            let mut cmd = Command::new("scalafmt");
-            cmd.arg("./src/");
-            run_cmd(cmd, quiet)
-        })
+    let mut pipeline = Some(());
+
+    if !quiet {
+        pipeline = pipeline
+            .and_then(|_| {
+                let mut cmd = Command::new("mill");
+                cmd.arg("--bsp-install");
+                run_cmd(cmd, quiet)
+            })
+            .map(|_| ()); // <-- Converts Option<ExitStatus> back to Option<()>
+
+        pipeline = pipeline
+            .and_then(|_| {
+                let mut cmd = Command::new("scalafmt");
+                cmd.arg("./src/");
+                run_cmd(cmd, quiet)
+            })
+            .map(|_| ()); // <-- Converts Option<ExitStatus> back to Option<()>
+    }
+
+    let pipeline = pipeline
         .and_then(|_| {
             let mut cmd = Command::new("mill");
             cmd.args(["run", input]);

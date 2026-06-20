@@ -111,13 +111,25 @@ class Emitter() {
         case Asm.Adrp(destReg, label) =>
             inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE")
 
-        case Asm.LoadData(data, baseReg, destReg) =>
+        case Asm.LoadData(data, baseReg, destReg) => {
+            val op = data.size match {
+                case Size.Byte1 => "ldrb"
+                case Size.Byte2 => "ldrh"
+                case _          => "ldr"
+            }
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
-            inst(s"ldr ${showOp(destReg)}, [${showOp(baseReg)}]")
+            inst(s"$op ${showOp(destReg)}, [${showOp(baseReg)}]")
+        }
 
-        case Asm.StoreData(srcReg, data, baseReg) =>
+        case Asm.StoreData(srcReg, data, baseReg) => {
+            val op = data.size match {
+                case Size.Byte1 => "strb"
+                case Size.Byte2 => "strh"
+                case _          => "str"
+            }
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
-            inst(s"str ${showOp(srcReg)}, [${showOp(baseReg)}]")
+            inst(s"$op ${showOp(srcReg)}, [${showOp(baseReg)}]")
+        }
 
         case Asm.Load(Asm.StackSlot(offset, size), dest) => {
             val is64BitDest = Asm.getOperandSize(dest) == Size.Byte8

@@ -45,7 +45,6 @@ object App {
                 pprintln(tacAst)
 
                 var asmAst = codegenProgram(tacAst)
-                pprintln(asmAst)
                 asmAst = PseudoRegisterReplacer.inProgram(asmAst)
                 pprintln(asmAst)
 

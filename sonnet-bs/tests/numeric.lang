@@ -1,3 +1,5 @@
+import ../stdlib/print.lang;
+
 # expected stdout:
 # -128
 # 127
@@ -34,8 +36,6 @@
 # 1
 # -128
 # -1
-
-import ./stdlib/print.lang;
 
 fun main() i32 {
 	var i8_min : i8 = -128i8;

@@ -52,7 +52,7 @@ object PseudoRegisterReplacer {
     }
 
     private def ensureReg(op: Asm.Operand, scratch: Asm.Reg, instr: ListBuffer[Asm.Instruction]): Asm.Register = op match {
-        case r: Asm.Register     => r
+        case r: Asm.Register => r
         case slot: Asm.StackSlot =>
             expandLoadStore(Asm.Load(slot, Asm.Register(scratch)), instr)
             Asm.Register(scratch)
