@@ -1,12 +1,13 @@
 Copyright (c) 2026 StefanValentinT
 
-The Sonnet & Ginko Compiler thereafter mentioned as "compiler" is licensed under the following conditions:
+The Sonnet  Compiler thereafter mentioned as "compiler" is licensed under the following conditions:
 
 The compiler consists of two main components:
 
-1. **Compiler Source Code** — this is the code that implements the compiler itself. It is used to compile programs, but it is **not included in any binaries** produced by the compiler.  
-
-2. **Libraries Shipped with the Compiler** — this includes the standard library and any additional libraries bundled with the compiler. These libraries **are included in the compiled programs** and provide functionality to programs built using the compiler.
+1. **Compiler Source Code** — this is the code that implements the compiler itself. 
+It is used to compile programs, but it is **not included in any binaries** produced by the compiler.
+2. **Libraries Shipped with the Compiler** — this includes the standard library and any additional libraries bundled with the compiler. 
+These libraries **are included in the compiled programs** and provide functionality to programs built using the compiler.
 
 These components are licensed under different licenses to allow everyone to use the compiler, whilst protecting its code.
 
@@ -14,9 +15,9 @@ This code must not be used in any LLM application or as training data for such w
 
 ## 1. Compiler Source Code
 
-The **compiler source code** is licensed under **GPLv3**.
+The **compiler source code** is licensed under **Any**. 
 
-- Any contributions to the compiler source code must also be licensed under **GPLv3**.  
+- GPLv3 contributions to the compiler source code must also be licensed under **GPLv3**.  
 - Contributors agree to license their contributions under GPLv3.
 
 Full GPLv3 terms shall be found under `licenses/gpl-3.0.md`

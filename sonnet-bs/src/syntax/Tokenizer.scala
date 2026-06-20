@@ -8,6 +8,7 @@ import scala.util.boundary
 
 class Token
 
+case class KwImport()   extends Token
 case class KwPrivate()  extends Token
 case class KwFor()      extends Token
 case class KwVal()      extends Token
@@ -30,6 +31,9 @@ case class KwU8()  extends Token
 case class KwU16() extends Token
 case class KwU32() extends Token
 case class KwU64() extends Token
+case class KwF16() extends Token
+case class KwF32() extends Token
+case class KwF64() extends Token
 
 case class LParen()   extends Token
 case class RParen()   extends Token
@@ -83,16 +87,19 @@ case class OpBitXorAssign() extends Token // ^=
 case class OpLShiftAssign() extends Token // <<=
 case class OpRShiftAssign() extends Token // >>=
 
-case class TokIdent(value: String)     extends Token
-case class TokI8Lit(value: BigInt)     extends Token
-case class TokI16Lit(value: BigInt)    extends Token
-case class TokI32Lit(value: BigInt)    extends Token
-case class TokI64Lit(value: BigInt)    extends Token
-case class TokU8Lit(value: BigInt)     extends Token
-case class TokU16Lit(value: BigInt)    extends Token
-case class TokU32Lit(value: BigInt)    extends Token
-case class TokU64Lit(value: BigInt)    extends Token
-case class TokStringLit(value: String) extends Token
+case class TokIdent(value: String)      extends Token
+case class TokI8Lit(value: BigInt)      extends Token
+case class TokI16Lit(value: BigInt)     extends Token
+case class TokI32Lit(value: BigInt)     extends Token
+case class TokI64Lit(value: BigInt)     extends Token
+case class TokU8Lit(value: BigInt)      extends Token
+case class TokU16Lit(value: BigInt)     extends Token
+case class TokU32Lit(value: BigInt)     extends Token
+case class TokU64Lit(value: BigInt)     extends Token
+case class TokF16Lit(value: BigDecimal) extends Token
+case class TokF32Lit(value: BigDecimal) extends Token
+case class TokF64Lit(value: BigDecimal) extends Token
+case class TokStringLit(value: String)  extends Token
 
 class TokenizerError(detail: String) extends CompilerError("Tokenizer", detail)
 
@@ -108,6 +115,7 @@ class Tokenizer(input: String) {
     private var precomputedToken: Option[Token] = None
 
     private val rawPatterns: List[(MatchPattern, String => Token)] = List(
+      (Word("import"), _ => KwImport()),
       (Word("private"), _ => KwPrivate()),
       (Word("for"), _ => KwFor()),
       (Word("val"), _ => KwVal()),
@@ -129,6 +137,9 @@ class Tokenizer(input: String) {
       (Word("u16"), _ => KwU16()),
       (Word("u32"), _ => KwU32()),
       (Word("u64"), _ => KwU64()),
+      (Word("f16"), _ => KwF16()),
+      (Word("f32"), _ => KwF32()),
+      (Word("f64"), _ => KwF64()),
       (Word("int"), _ => KwI32()),
       (Word("long"), _ => KwI64()),
       (Word("as"), _ => OpAs()),
@@ -178,6 +189,33 @@ class Tokenizer(input: String) {
       (Lit("]"), _ => RBracket()),
       (Lit("{"), _ => LBrace()),
       (Lit("}"), _ => RBrace()),
+      (
+        RegexPat("[0-9]+\\.[0-9]+f16|[0-9]+f16"),
+        s => {
+            val numStr = s.stripSuffix("f16")
+            TokF16Lit(BigDecimal(numStr))
+        }
+      ),
+      (
+        RegexPat("[0-9]+\\.[0-9]+f32|[0-9]+f32"),
+        s => {
+            val numStr = s.stripSuffix("f32")
+            TokF32Lit(BigDecimal(numStr))
+        }
+      ),
+      (
+        RegexPat("[0-9]+\\.[0-9]+f64|[0-9]+f64"),
+        s => {
+            val numStr = s.stripSuffix("f64")
+            TokF64Lit(BigDecimal(numStr))
+        }
+      ),
+      (
+        RegexPat("[0-9]+\\.[0-9]+"),
+        s => {
+            TokF64Lit(BigDecimal(s))
+        }
+      ),
       (
         RegexPat("\\d+i8"),
         s => {

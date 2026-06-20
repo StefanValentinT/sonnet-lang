@@ -1,0 +1,15 @@
+while = (cond, body){
+	if cond() then (cond, body)(){body(); while(cond, body)}() else 0
+}
+
+main = (){
+	var x: i32;
+	x = 0;
+	while(
+		(x)(){x<=10},
+		(mut x)(){
+			x += 2;
+		}
+	);
+	0
+}

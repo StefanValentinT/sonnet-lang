@@ -1,0 +1,4 @@
+binary_path = "./run_handler.sh"
+test_path = "tests"
+test_line_prefix = "# "
+glob = "*.lang"

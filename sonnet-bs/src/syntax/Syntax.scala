@@ -6,6 +6,7 @@ import tac.Tac
 case class Program(items: List[TopLevelItem])
 
 abstract sealed class TopLevelItem
+case class Import(path: String)                                                                              extends TopLevelItem
 case class Declaration(name: String, typ: Type)                                                              extends TopLevelItem
 case class FunctionDef(name: String, params: List[String], typ: FunType, body: Expression, linkage: Linkage) extends TopLevelItem
 case class GlobalVarDeclaration(name: String, typ: Type, init: Option[Expression], linkage: Linkage)         extends TopLevelItem
@@ -43,6 +44,9 @@ case class U8()                                   extends Type
 case class U16()                                  extends Type
 case class U32()                                  extends Type
 case class U64()                                  extends Type
+case class F16()                                  extends Type
+case class F32()                                  extends Type
+case class F64()                                  extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
 
 enum Const {
@@ -56,15 +60,36 @@ enum Const {
     case U32Lit(value: BigInt)
     case U64Lit(value: BigInt)
 
-    def getValue: BigInt = this match {
-        case syntax.Const.I8Lit(n)  => n
-        case syntax.Const.I16Lit(n) => n
-        case syntax.Const.I32Lit(n) => n
-        case syntax.Const.I64Lit(n) => n
-        case syntax.Const.U8Lit(n)  => n
-        case syntax.Const.U16Lit(n) => n
-        case syntax.Const.U32Lit(n) => n
-        case syntax.Const.U64Lit(n) => n
+    case F16Lit(value: BigDecimal)
+    case F32Lit(value: BigDecimal)
+    case F64Lit(value: BigDecimal)
+
+    def isZero: Boolean = this match {
+        case I8Lit(n)  => n == 0
+        case I16Lit(n) => n == 0
+        case I32Lit(n) => n == 0
+        case I64Lit(n) => n == 0
+        case U8Lit(n)  => n == 0
+        case U16Lit(n) => n == 0
+        case U32Lit(n) => n == 0
+        case U64Lit(n) => n == 0
+        case F16Lit(f) => f == BigDecimal(0)
+        case F32Lit(f) => f == BigDecimal(0)
+        case F64Lit(f) => f == BigDecimal(0)
+    }
+
+    def getValueStr: String = this match {
+        case I8Lit(n)  => n.toString
+        case I16Lit(n) => n.toString
+        case I32Lit(n) => n.toString
+        case I64Lit(n) => n.toString
+        case U8Lit(n)  => n.toString
+        case U16Lit(n) => n.toString
+        case U32Lit(n) => n.toString
+        case U64Lit(n) => n.toString
+        case F16Lit(f) => f.toString
+        case F32Lit(f) => f.toString
+        case F64Lit(f) => f.toString
     }
 }
 
@@ -94,14 +119,19 @@ enum Size {
 object Size {
     def fromTacType(t: Tac.Type): Size =
         t match {
-            case Tac.I8()  => Byte1
-            case Tac.I16() => Byte2
-            case Tac.I32() => Byte4
-            case Tac.I64() => Byte8
-
-            case Tac.U8()  => Byte1
-            case Tac.U16() => Byte2
-            case Tac.U32() => Byte4
-            case Tac.U64() => Byte8
+            case Tac.I8() | Tac.U8()               => Byte1
+            case Tac.I16() | Tac.U16() | Tac.F16() => Byte2
+            case Tac.I32() | Tac.U32() | Tac.F32() => Byte4
+            case Tac.I64() | Tac.U64() | Tac.F64() => Byte8
         }
+}
+
+def isNumericType(t: Type): Boolean = t match {
+    case I8() | I16() | I32() | I64() | U8() | U16() | U32() | U64() | F16() | F32() | F64() => true
+    case _                                                                                   => false
+}
+
+def isIntegerType(t: Type): Boolean = t match {
+    case I8() | I16() | I32() | I64() | U8() | U16() | U32() | U64() => true
+    case _                                                           => false
 }

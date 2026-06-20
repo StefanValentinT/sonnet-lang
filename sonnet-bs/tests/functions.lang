@@ -17,3 +17,6 @@ fun pow(base: i32, exp: i32) i32 {
 	};
 	res
 };
+
+# expected stdout:
+# 16

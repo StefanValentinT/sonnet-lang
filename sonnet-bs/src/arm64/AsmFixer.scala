@@ -5,9 +5,11 @@ import syntax.Size
 import scala.collection.mutable.{Map, ListBuffer}
 
 object PseudoRegisterReplacer {
-    private var globalSymbols = Map[String, Boolean]()
-    private val stackMap      = Map[String, Int]()
-    private var currentOffset = 0
+    private var globalSymbols  = Map[String, Boolean]()
+    private val stackMap       = Map[String, Int]()
+    private var currentOffset  = 0
+    private var floatLitCount  = 0
+    private val pooledLiterals = ListBuffer[Asm.StaticVariable]()
 
     private def registerOperandOffsets(op: Asm.Operand): Unit = op match {
         case Asm.PseudoReg(name, size) =>
@@ -34,30 +36,70 @@ object PseudoRegisterReplacer {
         case other => other
     }
 
+    private def getScratchReg(size: Size, isFloat: Boolean, baseIndex: Int): Asm.Reg = {
+        if (isFloat) {
+            size match {
+                case Size.Byte2 => if (baseIndex == 9) Asm.Reg.H9 else Asm.Reg.H10
+                case Size.Byte4 => if (baseIndex == 9) Asm.Reg.S9 else Asm.Reg.S10
+                case Size.Byte8 => if (baseIndex == 9) Asm.Reg.D9 else Asm.Reg.D10
+                case _          => Asm.Reg.S9
+            }
+        } else {
+            if (size == Size.Byte8) (if (baseIndex == 9) Asm.Reg.X9 else Asm.Reg.X10)
+            else (if (baseIndex == 9) Asm.Reg.W9
+                  else Asm.Reg.W10)
+        }
+    }
+
     private def ensureReg(op: Asm.Operand, scratch: Asm.Reg, instr: ListBuffer[Asm.Instruction]): Asm.Register = op match {
-        case r: Asm.Register => r
+        case r: Asm.Register     => r
         case slot: Asm.StackSlot =>
-            instr += Asm.Load(slot, Asm.Register(scratch))
+            expandLoadStore(Asm.Load(slot, Asm.Register(scratch)), instr)
             Asm.Register(scratch)
         case data: Asm.Data =>
             val scratch64 = scratch match {
-                case Asm.Reg.W9 | Asm.Reg.X9   => Asm.Register(Asm.Reg.X9)
-                case Asm.Reg.W10 | Asm.Reg.X10 => Asm.Register(Asm.Reg.X10)
-                case Asm.Reg.W11 | Asm.Reg.X11 => Asm.Register(Asm.Reg.X11)
-                case _                         => throw new RuntimeException(s"No 64-bit address mapping for scratch register $scratch")
+                case Asm.Reg.W9 | Asm.Reg.X9 | Asm.Reg.H9 | Asm.Reg.S9 | Asm.Reg.D9      => Asm.Register(Asm.Reg.X9)
+                case Asm.Reg.W10 | Asm.Reg.X10 | Asm.Reg.H10 | Asm.Reg.S10 | Asm.Reg.D10 => Asm.Register(Asm.Reg.X10)
+                case Asm.Reg.W11 | Asm.Reg.X11                                           => Asm.Register(Asm.Reg.X11)
+                case _                                                                   => throw new RuntimeException(s"No 64-bit address mapping for scratch register $scratch")
             }
             instr += Asm.Adrp(scratch64, data.location)
             instr += Asm.LoadData(data, scratch64, Asm.Register(scratch))
             Asm.Register(scratch)
-        case imm: Asm.Imm8  => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
-        case imm: Asm.Imm16 => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
-        case imm: Asm.Imm32 => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
-        case imm: Asm.Imm64 => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
-        case _              => throw new RuntimeException("Unexpected operand")
+        case imm: Asm.Imm8       => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Imm16      => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Imm32      => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Imm64      => instr += Asm.Mov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Float16Lit => instr += Asm.FMov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Float32Lit => instr += Asm.FMov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case imm: Asm.Float64Lit => instr += Asm.FMov(imm, Asm.Register(scratch)); Asm.Register(scratch)
+        case _                   => throw new RuntimeException("Unexpected operand")
+    }
+
+    private def expandLoadStore(instr: Asm.Instruction, buffer: ListBuffer[Asm.Instruction]): Unit = instr match {
+        case Asm.Load(slot, dest) =>
+            val resolvedSlot = replaceOperand(slot).asInstanceOf[Asm.StackSlot]
+            if (resolvedSlot.offset >= -256 && resolvedSlot.offset <= 255) {
+                buffer += Asm.Load(resolvedSlot, dest)
+            } else {
+                buffer += Asm.Mov(Asm.Imm64(resolvedSlot.offset), Asm.Register(Asm.Reg.X16))
+                buffer += Asm.LoadIndexed(dest, Asm.Register(Asm.Reg.X29), Asm.Register(Asm.Reg.X16), resolvedSlot.size)
+            }
+        case Asm.Store(src, slot) =>
+            val resolvedSlot = replaceOperand(slot).asInstanceOf[Asm.StackSlot]
+            if (resolvedSlot.offset >= -256 && resolvedSlot.offset <= 255) {
+                buffer += Asm.Store(src, resolvedSlot)
+            } else {
+                buffer += Asm.Mov(Asm.Imm64(resolvedSlot.offset), Asm.Register(Asm.Reg.X16))
+                buffer += Asm.StoreIndexed(src, Asm.Register(Asm.Reg.X29), Asm.Register(Asm.Reg.X16), resolvedSlot.size)
+            }
+        case _ => ()
     }
 
     def inProgram(p: Asm.Program): Asm.Program = {
         globalSymbols.clear()
+        pooledLiterals.clear()
+        floatLitCount = 0
         p.items.foreach {
             case v: Asm.StaticVariable => globalSymbols.put(v.name, v.isGlobal)
             case _                     => ()
@@ -66,25 +108,74 @@ object PseudoRegisterReplacer {
             case f: Asm.FunctionDef            => replaceInFunction(f)
             case staticVar: Asm.StaticVariable => staticVar
         }
-        Asm.Program(newItems)
+        Asm.Program(newItems ++ pooledLiterals.toList)
     }
 
-    private def expandMov(src: Asm.Operand, dest: Asm.Operand): List[Asm.Instruction] = {
+    private def expandMov(src: Asm.Operand, dest: Asm.Operand, isF: Boolean): List[Asm.Instruction] = {
         val newSrc  = replaceOperand(src)
         val newDest = replaceOperand(dest)
         val size    = Asm.getOperandSize(newSrc)
 
-        val scratchRegS    = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+        val scratchRegS    = getScratchReg(size, isFloat = isF, baseIndex = 9)
         val scratchAddrReg = Asm.Reg.X10
 
         (newSrc, newDest) match {
+            case (imm, regDest: Asm.Register) if isF && (imm.isInstanceOf[Asm.Float16Lit] || imm.isInstanceOf[Asm.Float32Lit] || imm.isInstanceOf[Asm.Float64Lit]) =>
+                val buffer  = ListBuffer[Asm.Instruction]()
+                val litName = s"f_lit_${floatLitCount}"
+                floatLitCount += 1
+
+                val constVal = imm match {
+                    case Asm.Float16Lit(fval) => syntax.Const.F16Lit(BigDecimal(fval))
+                    case Asm.Float32Lit(fval) => syntax.Const.F32Lit(BigDecimal(fval))
+                    case Asm.Float64Lit(dval) => syntax.Const.F64Lit(dval)
+                    case _                    => throw new RuntimeException("Unreachable")
+                }
+
+                pooledLiterals += Asm.StaticVariable(litName, isGlobal = false, size, constVal)
+                val dataOp = Asm.Data(litName, size)
+
+                buffer += Asm.Adrp(Asm.Register(scratchAddrReg), dataOp.location)
+                buffer += Asm.LoadData(dataOp, Asm.Register(scratchAddrReg), regDest)
+                buffer.toList
+
+            case (imm, destMem)
+                if (imm.isInstanceOf[Asm.Float16Lit] || imm.isInstanceOf[Asm.Float32Lit] || imm.isInstanceOf[Asm.Float64Lit]) &&
+                    (destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data]) =>
+                val buffer  = ListBuffer[Asm.Instruction]()
+                val litName = s"f_lit_${floatLitCount}"
+                floatLitCount += 1
+
+                val constVal = imm match {
+                    case Asm.Float16Lit(fval) => syntax.Const.F16Lit(BigDecimal(fval))
+                    case Asm.Float32Lit(fval) => syntax.Const.F32Lit(BigDecimal(fval))
+                    case Asm.Float64Lit(dval) => syntax.Const.F64Lit(dval)
+                    case _                    => throw new RuntimeException("Unreachable")
+                }
+
+                pooledLiterals += Asm.StaticVariable(litName, isGlobal = false, size, constVal)
+                val dataOp = Asm.Data(litName, size)
+
+                buffer += Asm.Adrp(Asm.Register(scratchAddrReg), dataOp.location)
+                buffer += Asm.LoadData(dataOp, Asm.Register(scratchAddrReg), Asm.Register(scratchRegS))
+
+                if (destMem.isInstanceOf[Asm.StackSlot]) {
+                    expandLoadStore(Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot]), buffer)
+                } else {
+                    val d                = destMem.asInstanceOf[Asm.Data]
+                    val secondScratchGPR = Asm.Reg.X11
+                    buffer += Asm.Adrp(Asm.Register(secondScratchGPR), d.location)
+                    buffer += Asm.StoreData(Asm.Register(scratchRegS), d, Asm.Register(secondScratchGPR))
+                }
+                buffer.toList
+
             case (srcMem, destMem)
                 if (srcMem.isInstanceOf[Asm.StackSlot] || srcMem.isInstanceOf[Asm.Data]) &&
                     (destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data]) =>
                 val buffer = ListBuffer[Asm.Instruction]()
                 val regS   = ensureReg(srcMem, scratchRegS, buffer)
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(regS, destMem.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(regS, destMem.asInstanceOf[Asm.StackSlot]), buffer)
                 } else {
                     val d = destMem.asInstanceOf[Asm.Data]
                     buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
@@ -94,9 +185,10 @@ object PseudoRegisterReplacer {
 
             case (imm: Asm.Imm8, destMem) if destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data] =>
                 val buffer = ListBuffer[Asm.Instruction]()
-                buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
+                if (isF) buffer += Asm.FMov(imm, Asm.Register(scratchRegS))
+                else buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot]), buffer)
                 } else {
                     val d = destMem.asInstanceOf[Asm.Data]
                     buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
@@ -106,9 +198,10 @@ object PseudoRegisterReplacer {
 
             case (imm: Asm.Imm16, destMem) if destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data] =>
                 val buffer = ListBuffer[Asm.Instruction]()
-                buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
+                if (isF) buffer += Asm.FMov(imm, Asm.Register(scratchRegS))
+                else buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot]), buffer)
                 } else {
                     val d = destMem.asInstanceOf[Asm.Data]
                     buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
@@ -118,9 +211,10 @@ object PseudoRegisterReplacer {
 
             case (imm: Asm.Imm32, destMem) if destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data] =>
                 val buffer = ListBuffer[Asm.Instruction]()
-                buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
+                if (isF) buffer += Asm.FMov(imm, Asm.Register(scratchRegS))
+                else buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot]), buffer)
                 } else {
                     val d = destMem.asInstanceOf[Asm.Data]
                     buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
@@ -130,9 +224,10 @@ object PseudoRegisterReplacer {
 
             case (imm: Asm.Imm64, destMem) if destMem.isInstanceOf[Asm.StackSlot] || destMem.isInstanceOf[Asm.Data] =>
                 val buffer = ListBuffer[Asm.Instruction]()
-                buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
+                if (isF) buffer += Asm.FMov(imm, Asm.Register(scratchRegS))
+                else buffer += Asm.Mov(imm, Asm.Register(scratchRegS))
                 if (destMem.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(Asm.Register(scratchRegS), destMem.asInstanceOf[Asm.StackSlot]), buffer)
                 } else {
                     val d = destMem.asInstanceOf[Asm.Data]
                     buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
@@ -147,7 +242,14 @@ object PseudoRegisterReplacer {
                 )
 
             case (slot: Asm.StackSlot, regDest: Asm.Register) =>
-                List(Asm.Load(slot, regDest))
+                val buffer = ListBuffer[Asm.Instruction]()
+                expandLoadStore(Asm.Load(slot, regDest), buffer)
+                buffer.toList
+
+            case (regSrc: Asm.Register, slot: Asm.StackSlot) =>
+                val buffer = ListBuffer[Asm.Instruction]()
+                expandLoadStore(Asm.Store(regSrc, slot), buffer)
+                buffer.toList
 
             case (regSrc: Asm.Register, data: Asm.Data) =>
                 List(
@@ -155,11 +257,9 @@ object PseudoRegisterReplacer {
                   Asm.StoreData(regSrc, data, Asm.Register(scratchAddrReg))
                 )
 
-            case (regSrc: Asm.Register, slot: Asm.StackSlot) =>
-                List(Asm.Store(regSrc, slot))
-
             case _ =>
-                List(Asm.Mov(newSrc, newDest))
+                if (isF) List(Asm.FMov(newSrc, newDest))
+                else List(Asm.Mov(newSrc, newDest))
         }
     }
 
@@ -192,7 +292,7 @@ object PseudoRegisterReplacer {
         }
 
         if (resolvedDest.isInstanceOf[Asm.StackSlot]) {
-            buffer += Asm.Store(targetReg, resolvedDest.asInstanceOf[Asm.StackSlot])
+            expandLoadStore(Asm.Store(targetReg, resolvedDest.asInstanceOf[Asm.StackSlot]), buffer)
         } else if (resolvedDest.isInstanceOf[Asm.Data]) {
             val d              = resolvedDest.asInstanceOf[Asm.Data]
             val scratchAddrReg = Asm.Reg.X11
@@ -200,6 +300,32 @@ object PseudoRegisterReplacer {
             buffer += Asm.StoreData(targetReg, d, Asm.Register(scratchAddrReg))
         }
 
+        buffer.toList
+    }
+
+    private def expandConversion(
+        src: Asm.Operand,
+        dest: Asm.Operand,
+        srcFloat: Boolean,
+        destFloat: Boolean,
+        build: (Asm.Register, Asm.Register) => Asm.Instruction
+    ): List[Asm.Instruction] = {
+        val buffer       = ListBuffer[Asm.Instruction]()
+        val resolvedSrc  = replaceOperand(src)
+        val resolvedDest = replaceOperand(dest)
+
+        val srcSize  = Asm.getOperandSize(resolvedSrc)
+        val destSize = Asm.getOperandSize(resolvedDest)
+
+        val regSrc = ensureReg(resolvedSrc, getScratchReg(srcSize, srcFloat, 9), buffer)
+        val regDest =
+            if (resolvedDest.isInstanceOf[Asm.Register]) resolvedDest.asInstanceOf[Asm.Register]
+            else Asm.Register(getScratchReg(destSize, destFloat, 10))
+
+        buffer += build(regSrc, regDest)
+        if (resolvedDest.isInstanceOf[Asm.StackSlot]) {
+            expandLoadStore(Asm.Store(regDest, resolvedDest.asInstanceOf[Asm.StackSlot]), buffer)
+        }
         buffer.toList
     }
 
@@ -215,6 +341,14 @@ object PseudoRegisterReplacer {
             case Asm.Uxtb(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Uxth(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Uxtw(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.FMov(src, dest)                 => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.FBinary(_, s1, s2, d)           => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(d)
+            case Asm.FCompare(s1, s2)                => registerOperandOffsets(s1); registerOperandOffsets(s2)
+            case Asm.FpToFp(src, dest)               => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.SignedToFp(src, dest)           => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.UnsignedToFp(src, dest)         => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.FpToSigned(src, dest)           => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.FpToUnsigned(src, dest)         => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.Unary(_, operand)               => registerOperandOffsets(operand)
             case Asm.Binary(_, s1, s2, d)            => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(d)
             case Asm.MultiplySubtract(s1, s2, s3, d) => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(s3); registerOperandOffsets(d)
@@ -228,7 +362,53 @@ object PseudoRegisterReplacer {
         val alignedBytes = if (totalBytes > 0) arm64.pad16(totalBytes) else 0
 
         var newInstructions = f.instructions.flatMap {
-            case Asm.Mov(src, dest) => expandMov(src, dest)
+            case Asm.Mov(src, dest)  => expandMov(src, dest, false)
+            case Asm.FMov(src, dest) => expandMov(src, dest, true)
+
+            case Asm.Load(src, dest) =>
+                val buffer = ListBuffer[Asm.Instruction]()
+                expandLoadStore(Asm.Load(src, dest), buffer)
+                buffer.toList
+
+            case Asm.Store(src, dest) =>
+                val buffer = ListBuffer[Asm.Instruction]()
+                expandLoadStore(Asm.Store(src, dest), buffer)
+                buffer.toList
+
+            case Asm.FBinary(op, s1, s2, d) =>
+                val buffer     = ListBuffer[Asm.Instruction]()
+                val resolvedS1 = replaceOperand(s1)
+                val resolvedS2 = replaceOperand(s2)
+                val finalD     = replaceOperand(d)
+                val size       = Asm.getOperandSize(resolvedS1)
+
+                val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
+                val regS2 = ensureReg(resolvedS2, getScratchReg(size, isFloat = true, 10), buffer)
+                val regD  = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(getScratchReg(size, isFloat = true, 9))
+
+                buffer += Asm.FBinary(op, regS1, regS2, regD)
+                if (finalD.isInstanceOf[Asm.StackSlot]) {
+                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
+                }
+                buffer.toList
+
+            case Asm.FCompare(s1, s2) =>
+                val buffer     = ListBuffer[Asm.Instruction]()
+                val resolvedS1 = replaceOperand(s1)
+                val finalS2    = replaceOperand(s2)
+                val size       = Asm.getOperandSize(resolvedS1)
+
+                val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
+                val regS2 = ensureReg(finalS2, getScratchReg(size, isFloat = true, 10), buffer)
+
+                buffer += Asm.FCompare(regS1, regS2)
+                buffer.toList
+
+            case Asm.FpToFp(src, dest)       => expandConversion(src, dest, srcFloat = true, destFloat = true, Asm.FpToFp(_, _))
+            case Asm.SignedToFp(src, dest)   => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.SignedToFp(_, _))
+            case Asm.UnsignedToFp(src, dest) => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.UnsignedToFp(_, _))
+            case Asm.FpToSigned(src, dest)   => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToSigned(_, _))
+            case Asm.FpToUnsigned(src, dest) => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToUnsigned(_, _))
 
             case Asm.Sextb(src, dest) => expandExtend(Size.Byte1, true, src, dest)
             case Asm.Sexth(src, dest) => expandExtend(Size.Byte2, true, src, dest)
@@ -246,9 +426,9 @@ object PseudoRegisterReplacer {
 
                 newOperand match {
                     case slot: Asm.StackSlot =>
-                        buffer += Asm.Load(slot, Asm.Register(scratchReg))
+                        expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
                         buffer += Asm.Unary(op, Asm.Register(scratchReg))
-                        buffer += Asm.Store(Asm.Register(scratchReg), slot)
+                        expandLoadStore(Asm.Store(Asm.Register(scratchReg), slot), buffer)
                     case data: Asm.Data =>
                         val reg = ensureReg(data, scratchReg, buffer)
                         buffer += Asm.Unary(op, reg)
@@ -280,7 +460,7 @@ object PseudoRegisterReplacer {
 
                 buffer += Asm.Binary(op, regS1, regS2, regD)
                 if (finalD.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
                 } else if (finalD.isInstanceOf[Asm.Data]) {
                     val d              = finalD.asInstanceOf[Asm.Data]
                     val scratchAddrReg = Asm.Reg.X11
@@ -308,7 +488,7 @@ object PseudoRegisterReplacer {
 
                 buffer += Asm.MultiplySubtract(regS1, regS2, regS3, regD)
                 if (finalD.isInstanceOf[Asm.StackSlot]) {
-                    buffer += Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot])
+                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
                 } else if (finalD.isInstanceOf[Asm.Data]) {
                     val d              = finalD.asInstanceOf[Asm.Data]
                     val scratchAddrReg = Asm.Reg.X11
@@ -336,10 +516,10 @@ object PseudoRegisterReplacer {
                 val finalDest = replaceOperand(destination)
                 finalDest match {
                     case slot: Asm.StackSlot =>
-                        List(
-                          Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9)),
-                          Asm.Store(Asm.Register(Asm.Reg.W9), slot)
-                        )
+                        val buffer = ListBuffer[Asm.Instruction]()
+                        buffer += Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9))
+                        expandLoadStore(Asm.Store(Asm.Register(Asm.Reg.W9), slot), buffer)
+                        buffer.toList
                     case data: Asm.Data =>
                         val scratchAddrReg = Asm.Reg.X10
                         List(
@@ -359,10 +539,10 @@ object PseudoRegisterReplacer {
 
                 newSrc match {
                     case slot: Asm.StackSlot =>
-                        List(
-                          Asm.Load(slot, Asm.Register(scratchReg)),
-                          Asm.Push(Asm.Register(scratchReg))
-                        )
+                        val buffer = ListBuffer[Asm.Instruction]()
+                        expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
+                        buffer += Asm.Push(Asm.Register(scratchReg))
+                        buffer.toList
                     case data: Asm.Data =>
                         val buffer = ListBuffer[Asm.Instruction]()
                         val reg    = ensureReg(data, scratchReg, buffer)

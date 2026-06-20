@@ -153,6 +153,13 @@ object TypeChecker {
             case Constant(Const.I64Lit(value)) =>
                 Typed.Constant(Const.I64Lit(value), I64())
 
+            case Constant(Const.F16Lit(value)) =>
+                Typed.Constant(Const.F16Lit(value), F16())
+            case Constant(Const.F32Lit(value)) =>
+                Typed.Constant(Const.F32Lit(value), F32())
+            case Constant(Const.F64Lit(value)) =>
+                Typed.Constant(Const.F64Lit(value), F64())
+
             case Constant(Const.U8Lit(value)) =>
                 Typed.Constant(Const.U8Lit(value), U8())
             case Constant(Const.U16Lit(value)) =>
@@ -199,6 +206,10 @@ object TypeChecker {
                 if (!isNumericType(t)) {
                     throw EpistemicError("Unary operator expects integer value.")
                 }
+                op match {
+                    case UnaryOp.Complement => if !(isIntegerType(t)) then throw EpistemicError(s"Complement requires integer types, found: $t.")
+                    case _                  => ()
+                }
                 Typed.Unary(op, typedExpr, t)
             }
             case Binary(op, exp1, exp2) => {
@@ -210,7 +221,11 @@ object TypeChecker {
                     throw EpistemicError(s"Type mismatch in binary operation: $t1 and $t2 do not match.")
                 }
                 if (!isNumericType(t1)) {
-                    throw EpistemicError(s"Binary operator requires numeric types, found: $t1")
+                    throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
+                }
+                op match {
+                    case BinaryOp.Remainder => if !(isIntegerType(t1) && isIntegerType(t1)) then throw EpistemicError(s"Remainder operator requires integer types, found: $t1.")
+                    case _                  => ()
                 }
                 if (isComparisonOp(op)) {
                     Typed.Binary(op, typedE1, typedE2, I32())
@@ -258,11 +273,6 @@ object TypeChecker {
             case Continue(label) =>
                 Typed.Continue(label, I32())
         }
-    }
-
-    private def isNumericType(t: Type): Boolean = t match {
-        case I8() | I16() | I32() | I64() | U8() | U16() | U32() | U64() => true
-        case _                                                           => false
     }
 
     private def isComparisonOp(op: BinaryOp): Boolean =

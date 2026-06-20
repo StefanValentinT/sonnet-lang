@@ -1,5 +1,9 @@
 print_i32 : (i32) -> i32;
 
+# expected stdout:
+# 12
+
+
 # Finding the nth highly composite number
 # one that has more divisors than any other number before
 fun main() i32 {

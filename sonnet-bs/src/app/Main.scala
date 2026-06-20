@@ -34,7 +34,9 @@ object App {
                 println(s"Compiling $filename:")
                 val ast = Parser.fromString(fileContent).parse()
                 pprintln(ast)
-                val fixedAst   = VariableResolver.resolveProgram(ast)
+
+                val importAst  = ImportResolver().resolve(ast)
+                val fixedAst   = VariableResolver.resolveProgram(importAst)
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
                 val typedAst   = TypeChecker.typecheckProgram(labeledAst)
                 pprintln(typedAst)
@@ -43,6 +45,7 @@ object App {
                 pprintln(tacAst)
 
                 var asmAst = codegenProgram(tacAst)
+                pprintln(asmAst)
                 asmAst = PseudoRegisterReplacer.inProgram(asmAst)
                 pprintln(asmAst)
 

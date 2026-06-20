@@ -4,6 +4,7 @@ import app.CompilerError
 import scala.reflect.ClassTag
 import scala.collection.mutable.ListBuffer
 import pprint.pprintln
+import scala.util.boundary
 
 class ParserError(detail: String) extends CompilerError("Parser", detail)
 
@@ -16,29 +17,77 @@ class Parser(tokenizer: Tokenizer) {
     def parse(): Program = {
         val items = new ListBuffer[TopLevelItem]()
         while (tokenizer.peek().isDefined) {
-            val linkage = tokenizer.peek() match {
-                case Some(KwPrivate()) =>
-                    tokenizer.consume()
-                    Linkage.Private
-                case _ =>
-                    Linkage.Public
-            }
-            tokenizer.peek() match {
-                case Some(KwFun()) =>
-                    items += parseFunctionDef(linkage)
-                case Some(KwVar()) =>
-                    items += parseGlobalVarDeclaration(linkage)
-                case Some(TokIdent(_)) =>
-                    if (linkage == Linkage.Private) {
-                        throw ParserError("Declarations can not have a linkage modifier.")
-                    }
-                    items += parseDeclaration()
-                case Some(other) =>
-                    throw ParserError(s"Expected function or top-level declaration, got: $other")
+            if (tokenizer.peek() == Some(KwImport())) {
+                items += parseImportStmt()
+            } else {
+                val linkage = tokenizer.peek() match {
+                    case Some(KwPrivate()) =>
+                        tokenizer.consume()
+                        Linkage.Private
+                    case _ =>
+                        Linkage.Public
+                }
+                tokenizer.peek() match {
+                    case Some(KwFun()) =>
+                        items += parseFunctionDef(linkage)
+                    case Some(KwVar()) =>
+                        items += parseGlobalVarDeclaration(linkage)
+                    case Some(TokIdent(_)) =>
+                        if (linkage == Linkage.Private) {
+                            throw ParserError("Declarations can not have a linkage modifier.")
+                        }
+                        items += parseDeclaration()
+                    case Some(other) =>
+                        throw ParserError(s"Expected function or top-level declaration, got: $other")
+                }
             }
             expect(OpSemicolon())
         }
         Program(items.toList)
+    }
+
+    def parseImportStmt(): Import = {
+        expect(KwImport())
+        val pathBuilder = new StringBuilder()
+
+        boundary {
+            while (tokenizer.peek().isDefined) {
+                tokenizer.peek() match {
+                    case Some(OpSemicolon()) =>
+                        boundary.break()
+                    case Some(TokIdent(v)) =>
+                        pathBuilder.append(v)
+                        tokenizer.consume()
+                    case Some(OpDot()) => {
+                        tokenizer.consume()
+                        tokenizer.peek() match {
+                            case Some(OpDot()) => {
+                                pathBuilder.append("..")
+                                tokenizer.consume()
+                            }
+                            case _ => {
+
+                                pathBuilder.append(".")
+                            }
+                        }
+                    }
+                    case Some(OpDiv()) =>
+                        pathBuilder.append("/")
+                        tokenizer.consume()
+                    case Some(other) =>
+                        throw ParserError(s"Unexpected token inside import path: $other")
+                    case None =>
+                        throw ParserError("Reached End-Of-File while parsing.")
+                }
+            }
+        }
+
+        val resolvedPath = pathBuilder.toString()
+        if (resolvedPath.isEmpty) {
+            throw ParserError("Import statement is missing a file path.")
+        }
+
+        Import(resolvedPath)
     }
 
     def parseDeclaration(): Declaration = {
@@ -159,6 +208,10 @@ class Parser(tokenizer: Tokenizer) {
             case Some(KwU16()) => U16()
             case Some(KwU32()) => U32()
             case Some(KwU64()) => U64()
+
+            case Some(KwF16()) => F16()
+            case Some(KwF32()) => F32()
+            case Some(KwF64()) => F64()
 
             case Some(LParen()) => {
                 val params = new ListBuffer[Type]()
@@ -283,6 +336,10 @@ class Parser(tokenizer: Tokenizer) {
             case Some(TokU16Lit(value)) => Constant(Const.U16Lit(value))
             case Some(TokU32Lit(value)) => Constant(Const.U32Lit(value))
             case Some(TokU64Lit(value)) => Constant(Const.U64Lit(value))
+
+            case Some(TokF16Lit(value)) => Constant(Const.F16Lit(value))
+            case Some(TokF32Lit(value)) => Constant(Const.F32Lit(value))
+            case Some(TokF64Lit(value)) => Constant(Const.F64Lit(value))
 
             case Some(TokI8Lit(value)) =>
                 if (!directNegation) {
