@@ -112,21 +112,33 @@ class Emitter() {
             inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE")
 
         case Asm.LoadData(data, baseReg, destReg) => {
-            val op = data.size match {
-                case Size.Byte1 => "ldrb"
-                case Size.Byte2 => "ldrh"
-                case _          => "ldr"
+            val isFP = destReg match {
+                case Asm.Register(r) => isFloatRegister(r)
             }
+            val op =
+                if (isFP) "ldr"
+                else
+                    data.size match {
+                        case Size.Byte1 => "ldrb"
+                        case Size.Byte2 => "ldrh"
+                        case _          => "ldr"
+                    }
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"$op ${showOp(destReg)}, [${showOp(baseReg)}]")
         }
 
         case Asm.StoreData(srcReg, data, baseReg) => {
-            val op = data.size match {
-                case Size.Byte1 => "strb"
-                case Size.Byte2 => "strh"
-                case _          => "str"
+            val isFP = srcReg match {
+                case Asm.Register(r) => isFloatRegister(r)
             }
+            val op =
+                if (isFP) "str"
+                else
+                    data.size match {
+                        case Size.Byte1 => "strb"
+                        case Size.Byte2 => "strh"
+                        case _          => "str"
+                    }
             inst(s"ldr ${showOp(baseReg)}, [${showOp(baseReg)}, _${data.location}@GOTPAGEOFF]\n")
             inst(s"$op ${showOp(srcReg)}, [${showOp(baseReg)}]")
         }
@@ -135,7 +147,6 @@ class Emitter() {
             val is64BitDest = Asm.getOperandSize(dest) == Size.Byte8
             val isFP = dest match {
                 case Asm.Register(r) => isFloatRegister(r)
-                case _               => false
             }
             val op =
                 if (isFP) "ldr"
@@ -162,7 +173,6 @@ class Emitter() {
         case Asm.Store(src, Asm.StackSlot(offset, size)) => {
             val isFP = src match {
                 case Asm.Register(r) => isFloatRegister(r)
-                case _               => false
             }
             val op =
                 if (isFP) "str"
@@ -189,7 +199,6 @@ class Emitter() {
             val is64BitDest = Asm.getOperandSize(dest) == Size.Byte8
             val isFP = dest match {
                 case Asm.Register(r) => isFloatRegister(r)
-                case _               => false
             }
             val op =
                 if (isFP) "ldr"
@@ -216,7 +225,6 @@ class Emitter() {
         case Asm.StoreIndexed(src, baseReg, offsetReg, size) => {
             val isFP = src match {
                 case Asm.Register(r) => isFloatRegister(r)
-                case _               => false
             }
             val op =
                 if (isFP) "str"

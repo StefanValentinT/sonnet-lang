@@ -4,24 +4,16 @@ import java.nio.file.{Files, Path, Paths}
 import java.io.IOException
 
 object FileWriter {
-    def writeFile(filePath: String, content: String): Unit = {
-        val fileName = Paths.get(filePath).getFileName.toString
-        val asmFileName = if (fileName.contains(".")) {
-            fileName.replaceAll("\\.[^.]+$", ".s")
-        } else {
-            s"$fileName.s"
-        }
-        val finalAsmPath = Paths.get("build", asmFileName)
+    def writeFile(targetPath: Path, content: String): Unit = {
         try {
-            val parentDir = finalAsmPath.getParent
-            if (parentDir != null && !Files.exists(parentDir)) {
+            val parentDir = targetPath.getParent
+            if (parentDir != null) {
                 Files.createDirectories(parentDir)
             }
-
-            Files.writeString(finalAsmPath, content)
+            Files.writeString(targetPath, content)
         } catch {
-            case _: IOException | _: NullPointerException => throw new IOError("Output failed.")
+            case _: IOException | _: NullPointerException =>
+                throw new IOError(s"Output failed writing to: $targetPath")
         }
     }
-
 }

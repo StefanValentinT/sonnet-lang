@@ -229,9 +229,10 @@ object TypeChecker {
                     throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
                 }
                 op match {
-                    case BinaryOp.Add | BinaryOp.Divide | BinaryOp.Subtract | BinaryOp.Multiply => if (!isNumericType(t1)) then throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
-                    case BinaryOp.Remainder                                                     => if !(isIntegerType(t1)) then throw EpistemicError(s"Remainder operator requires integer types, found: $t1.")
-                    case BinaryOp.And | BinaryOp.Or                                             => if t1 != Bool() then throw EpistemicError(s"Logical operators require bool type, found: $t1.")
+                    case BinaryOp.Equal | BinaryOp.NotEqual | BinaryOp.LessThan | BinaryOp.LessOrEqual | BinaryOp.GreaterThan | BinaryOp.GreaterOrEqual => if (!isNumericType(t1)) then throw EpistemicError(s"Relational operator requires numeric types, found: $t1.")
+                    case BinaryOp.Add | BinaryOp.Divide | BinaryOp.Subtract | BinaryOp.Multiply                                                         => if (!isNumericType(t1)) then throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
+                    case BinaryOp.Remainder | BinaryOp.BitAnd | BinaryOp.BitOr | BinaryOp.BitXor | BinaryOp.LShift | BinaryOp.RShift                    => if !(isIntegerType(t1)) then throw EpistemicError(s"Remainder and Bit operators requires integer types, found: $t1.")
+                    case BinaryOp.And | BinaryOp.Or                                                                                                     => if t1 != Bool() then throw EpistemicError(s"Logical operators require bool type, found: $t1.")
                 }
                 if (isComparisonOp(op)) {
                     Typed.Binary(op, typedE1, typedE2, Bool())

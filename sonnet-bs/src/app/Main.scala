@@ -1,11 +1,12 @@
 package app
 
-import io.{FileScanner, FileWriter}
+import io.{FileScanner, FileWriter, CliParser, CompilerArgs}
 import syntax.*
 import pprint.pprintln
 import arm64.*
 import tac.*
 import episteme.*
+import java.nio.file.{Paths, Path}
 
 open class CompilerError(who: String, detail: String = null)
     extends RuntimeException({
@@ -16,49 +17,60 @@ open class CompilerError(who: String, detail: String = null)
 object App {
 
     def main(args: Array[String]): Unit = {
-        if args.size == 0 then { printUsage(); return () }
+        CliParser.parse(args) match {
+            case None        => printUsage()
+            case Some(cArgs) => execute(cArgs)
+        }
+    }
 
-        val mode = args(0)
-
-        mode match {
-            case "help" => {
-                printUsage()
-            }
-
-            case "repl" => {
-                println("Starting REPL.")
-            }
-
+    private def execute(cfg: CompilerArgs): Unit = {
+        cfg.filename match {
+            case "help" => printUsage()
+            case "repl" => println("Starting REPL.")
             case filename => {
-                val fileContent = FileScanner.readFile(filename)
-                println(s"Compiling $filename:")
-                val ast = Parser.fromString(fileContent).parse()
-                pprintln(ast)
+                val sourcePath = Paths.get(filename).toAbsolutePath.normalize()
+                val sourceDir  = sourcePath.getParent
+                val baseName   = sourcePath.getFileName.toString.replaceAll("\\.[^.]+$", "")
 
-                val importAst  = ImportResolver().resolve(ast)
+                val asmPath = sourceDir.resolve("build").resolve(s"$baseName.s")
+
+                val fileContent = FileScanner.readFile(sourcePath.toString)
+                if (cfg.isVerbose) println(s"Compiling $filename:")
+
+                val ast = Parser.fromString(fileContent).parse()
+                if (cfg.isVerbose) pprintln(ast)
+
+                val importAst  = ImportResolver().resolve(ast, sourcePath.toString)
                 val fixedAst   = VariableResolver.resolveProgram(importAst)
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
                 val typedAst   = TypeChecker.typecheckProgram(labeledAst)
-                pprintln(typedAst)
+                if (cfg.isVerbose) pprintln(typedAst)
 
                 val tacAst = TacEmitter(typedAst).emitProgramTac()
-                pprintln(tacAst)
+                if (cfg.isVerbose) pprintln(tacAst)
 
                 var asmAst = codegenProgram(tacAst)
                 asmAst = PseudoRegisterReplacer.inProgram(asmAst)
-                pprintln(asmAst)
+                if (cfg.isVerbose) pprintln(asmAst)
 
                 val asmString = Emitter().emitProgram(asmAst)
-                println(asmString)
+                if (cfg.isVerbose) println(asmString)
 
-                FileWriter.writeFile(filename, asmString)
+                FileWriter.writeFile(asmPath, asmString)
+
+                val finalExecPath = cfg.outputExecPath.getOrElse(sourceDir.resolve(baseName))
+
+                if (cfg.isVerbose) {
+                    println(s"Assembly generated at: $asmPath")
+                    println(s"Target executable path configured to: $finalExecPath")
+                }
             }
         }
     }
 
     private def printUsage(): Unit = {
         println("Usage:")
-        println("\tTo compile:       sonnetc <filename>")
+        println("\tTo compile:       sonnetc <filename> [-o <output_exec>] [-v | --verbose]")
         println("\tTo get this:      sonnetc help")
         println("\tTo get the REPL:  sonnetc repl")
     }

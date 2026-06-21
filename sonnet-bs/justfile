@@ -1,0 +1,23 @@
+all: fmt bsp build
+
+fmt:
+	scalafmt ./src/
+
+bsp:
+	mill --bsp-install
+
+build:
+	mill nativeLink
+	cp out/nativeLink.dest/out ./sonnetc
+
+run file:
+	./sonnetc {{ file }} --verbose
+
+	mkdir -p build
+
+	gcc -Wall -Wextra -Wpedantic -Werror \
+		build/$(basename {{ file }} | cut -f 1 -d '.').s \
+		stdlib/*.c \
+		-o build/$(basename {{ file }} | cut -f 1 -d '.')
+
+	./build/$(basename {{ file }} | cut -f 1 -d '.')
