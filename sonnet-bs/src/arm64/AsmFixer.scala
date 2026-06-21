@@ -361,205 +361,224 @@ object PseudoRegisterReplacer {
         val totalBytes   = currentOffset.abs
         val alignedBytes = if (totalBytes > 0) arm64.pad16(totalBytes) else 0
 
-        var newInstructions = f.instructions.flatMap {
-            case Asm.Mov(src, dest)  => expandMov(src, dest, false)
-            case Asm.FMov(src, dest) => expandMov(src, dest, true)
+        val expandedBuffer = ListBuffer[Asm.Instruction]()
+        var remaining      = f.instructions
 
-            case Asm.Load(src, dest) =>
-                val buffer = ListBuffer[Asm.Instruction]()
-                expandLoadStore(Asm.Load(src, dest), buffer)
-                buffer.toList
+        while (remaining.nonEmpty) {
+            remaining match {
+                case Asm.Adrp(Asm.Register(r1), label) :: Asm.StoreData(Asm.Register(r2), dest, Asm.Register(r3)) :: tail if r1 == r3 && (r1 == r2 || (r1 == Asm.Reg.X9 && r2 == Asm.Reg.W9) || (r1 == Asm.Reg.X10 && r2 == Asm.Reg.W10) || (r1 == Asm.Reg.X11 && r2 == Asm.Reg.W11)) =>
+                    val altReg = if (r1 == Asm.Reg.X9) Asm.Reg.X10 else Asm.Reg.X9
+                    remaining = Asm.Adrp(Asm.Register(altReg), label) :: Asm.StoreData(Asm.Register(r2), dest, Asm.Register(altReg)) :: tail
 
-            case Asm.Store(src, dest) =>
-                val buffer = ListBuffer[Asm.Instruction]()
-                expandLoadStore(Asm.Store(src, dest), buffer)
-                buffer.toList
+                case head :: tail => {
+                    val expandedHead = head match {
+                        case Asm.Mov(src, dest) => expandMov(src, dest, false)
 
-            case Asm.FBinary(op, s1, s2, d) =>
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val resolvedS1 = replaceOperand(s1)
-                val resolvedS2 = replaceOperand(s2)
-                val finalD     = replaceOperand(d)
-                val size       = Asm.getOperandSize(resolvedS1)
+                        case Asm.FMov(src, dest) => expandMov(src, dest, true)
 
-                val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
-                val regS2 = ensureReg(resolvedS2, getScratchReg(size, isFloat = true, 10), buffer)
-                val regD  = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(getScratchReg(size, isFloat = true, 9))
+                        case Asm.Load(src, dest) =>
+                            val buffer = ListBuffer[Asm.Instruction]()
+                            expandLoadStore(Asm.Load(src, dest), buffer)
+                            buffer.toList
 
-                buffer += Asm.FBinary(op, regS1, regS2, regD)
-                if (finalD.isInstanceOf[Asm.StackSlot]) {
-                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
+                        case Asm.Store(src, dest) =>
+                            val buffer = ListBuffer[Asm.Instruction]()
+                            expandLoadStore(Asm.Store(src, dest), buffer)
+                            buffer.toList
+
+                        case Asm.FBinary(op, s1, s2, d) =>
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val resolvedS1 = replaceOperand(s1)
+                            val resolvedS2 = replaceOperand(s2)
+                            val finalD     = replaceOperand(d)
+                            val size       = Asm.getOperandSize(resolvedS1)
+
+                            val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
+                            val regS2 = ensureReg(resolvedS2, getScratchReg(size, isFloat = true, 10), buffer)
+                            val regD  = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(getScratchReg(size, isFloat = true, 9))
+
+                            buffer += Asm.FBinary(op, regS1, regS2, regD)
+                            if (finalD.isInstanceOf[Asm.StackSlot]) {
+                                expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
+                            }
+                            buffer.toList
+
+                        case Asm.FCompare(s1, s2) =>
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val resolvedS1 = replaceOperand(s1)
+                            val finalS2    = replaceOperand(s2)
+                            val size       = Asm.getOperandSize(resolvedS1)
+
+                            val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
+                            val regS2 = ensureReg(finalS2, getScratchReg(size, isFloat = true, 10), buffer)
+
+                            buffer += Asm.FCompare(regS1, regS2)
+                            buffer.toList
+
+                        case Asm.FpToFp(src, dest)       => expandConversion(src, dest, srcFloat = true, destFloat = true, Asm.FpToFp(_, _))
+                        case Asm.SignedToFp(src, dest)   => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.SignedToFp(_, _))
+                        case Asm.UnsignedToFp(src, dest) => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.UnsignedToFp(_, _))
+                        case Asm.FpToSigned(src, dest)   => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToSigned(_, _))
+                        case Asm.FpToUnsigned(src, dest) => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToUnsigned(_, _))
+
+                        case Asm.Sextb(src, dest) => expandExtend(Size.Byte1, true, src, dest)
+                        case Asm.Sexth(src, dest) => expandExtend(Size.Byte2, true, src, dest)
+                        case Asm.Sextw(src, dest) => expandExtend(Size.Byte4, true, src, dest)
+
+                        case Asm.Uxtb(src, dest) => expandExtend(Size.Byte1, false, src, dest)
+                        case Asm.Uxth(src, dest) => expandExtend(Size.Byte2, false, src, dest)
+                        case Asm.Uxtw(src, dest) => expandExtend(Size.Byte4, false, src, dest)
+
+                        case Asm.Unary(op, operand) => {
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val newOperand = replaceOperand(operand)
+                            val size       = Asm.getOperandSize(newOperand)
+                            val scratchReg = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+
+                            newOperand match {
+                                case slot: Asm.StackSlot =>
+                                    expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
+                                    buffer += Asm.Unary(op, Asm.Register(scratchReg))
+                                    expandLoadStore(Asm.Store(Asm.Register(scratchReg), slot), buffer)
+                                case data: Asm.Data =>
+                                    val reg = ensureReg(data, scratchReg, buffer)
+                                    buffer += Asm.Unary(op, reg)
+                                    val scratchAddrReg = Asm.Reg.X10
+                                    buffer += Asm.Adrp(Asm.Register(scratchAddrReg), data.location)
+                                    buffer += Asm.StoreData(reg, data, Asm.Register(scratchAddrReg))
+                                case _ =>
+                                    buffer += Asm.Unary(op, newOperand)
+                            }
+                            buffer.toList
+                        }
+                        case Asm.Binary(op, s1, s2, d) => {
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val resolvedS1 = replaceOperand(s1)
+                            val resolvedS2 = replaceOperand(s2)
+                            val finalD     = replaceOperand(d)
+
+                            val size      = Asm.getOperandSize(resolvedS1)
+                            val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+                            val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
+                            val scratchD  = if (size == Size.Byte8) Asm.Reg.X11 else Asm.Reg.W11
+
+                            val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
+                            val regS2 = ensureReg(resolvedS2, scratchS2, buffer)
+                            val regD = finalD match {
+                                case r: Asm.Register => r
+                                case _               => Asm.Register(scratchD)
+                            }
+
+                            buffer += Asm.Binary(op, regS1, regS2, regD)
+                            if (finalD.isInstanceOf[Asm.StackSlot]) {
+                                expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
+                            } else if (finalD.isInstanceOf[Asm.Data]) {
+                                val d              = finalD.asInstanceOf[Asm.Data]
+                                val scratchAddrReg = Asm.Reg.X11
+                                buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
+                                buffer += Asm.StoreData(regD, d, Asm.Register(scratchAddrReg))
+                            }
+                            buffer.toList
+                        }
+                        case Asm.MultiplySubtract(s1, s2, s3, d) => {
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val resolvedS1 = replaceOperand(s1)
+                            val resolvedS2 = replaceOperand(s2)
+                            val resolvedS3 = replaceOperand(s3)
+                            val finalD     = replaceOperand(d)
+
+                            val size      = Asm.getOperandSize(resolvedS1)
+                            val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+                            val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
+                            val scratchS3 = if (size == Size.Byte8) Asm.Reg.X11 else Asm.Reg.W11
+
+                            val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
+                            val regS2 = ensureReg(resolvedS2, scratchS2, buffer)
+                            val regS3 = ensureReg(resolvedS3, scratchS3, buffer)
+                            val regD  = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(scratchS1)
+
+                            buffer += Asm.MultiplySubtract(regS1, regS2, regS3, regD)
+                            if (finalD.isInstanceOf[Asm.StackSlot]) {
+                                expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
+                            } else if (finalD.isInstanceOf[Asm.Data]) {
+                                val d              = finalD.asInstanceOf[Asm.Data]
+                                val scratchAddrReg = Asm.Reg.X11
+                                buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
+                                buffer += Asm.StoreData(regD, d, Asm.Register(scratchAddrReg))
+                            }
+                            buffer.toList
+                        }
+                        case Asm.Compare(s1, s2) => {
+                            val buffer     = ListBuffer[Asm.Instruction]()
+                            val resolvedS1 = replaceOperand(s1)
+                            val finalS2    = replaceOperand(s2)
+
+                            val size      = Asm.getOperandSize(resolvedS1)
+                            val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+                            val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
+
+                            val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
+                            val regS2 = ensureReg(finalS2, scratchS2, buffer)
+
+                            buffer += Asm.Compare(regS1, regS2)
+                            buffer.toList
+                        }
+                        case Asm.ConditionalSet(condition, destination) => {
+                            val finalDest = replaceOperand(destination)
+                            finalDest match {
+                                case slot: Asm.StackSlot =>
+                                    val buffer = ListBuffer[Asm.Instruction]()
+                                    buffer += Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9))
+                                    expandLoadStore(Asm.Store(Asm.Register(Asm.Reg.W9), slot), buffer)
+                                    buffer.toList
+                                case data: Asm.Data =>
+                                    val scratchAddrReg = Asm.Reg.X10
+                                    List(
+                                      Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9)),
+                                      Asm.Adrp(Asm.Register(scratchAddrReg), data.location),
+                                      Asm.StoreData(Asm.Register(Asm.Reg.W9), data, Asm.Register(scratchAddrReg))
+                                    )
+                                case _ => List(Asm.ConditionalSet(condition, finalDest))
+                            }
+                        }
+                        case Asm.Call(target)          => List(Asm.Call(target))
+                        case Asm.DeallocateStack(size) => List(Asm.DeallocateStack(size))
+                        case Asm.Push(src) => {
+                            val newSrc     = replaceOperand(src)
+                            val size       = Asm.getOperandSize(newSrc)
+                            val scratchReg = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
+
+                            newSrc match {
+                                case slot: Asm.StackSlot =>
+                                    val buffer = ListBuffer[Asm.Instruction]()
+                                    expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
+                                    buffer += Asm.Push(Asm.Register(scratchReg))
+                                    buffer.toList
+                                case data: Asm.Data =>
+                                    val buffer = ListBuffer[Asm.Instruction]()
+                                    val reg    = ensureReg(data, scratchReg, buffer)
+                                    buffer += Asm.Push(reg)
+                                    buffer.toList
+                                case other =>
+                                    List(Asm.Push(other))
+                            }
+                        }
+                        case Asm.Ret() =>
+                            if (alignedBytes > 0) {
+                                List(Asm.DeallocateStack(alignedBytes), Asm.Ret())
+                            } else {
+                                List(Asm.Ret())
+                            }
+                        case other => List(other)
+                    }
+                    expandedBuffer ++= expandedHead
+                    remaining = tail
                 }
-                buffer.toList
-
-            case Asm.FCompare(s1, s2) =>
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val resolvedS1 = replaceOperand(s1)
-                val finalS2    = replaceOperand(s2)
-                val size       = Asm.getOperandSize(resolvedS1)
-
-                val regS1 = ensureReg(resolvedS1, getScratchReg(size, isFloat = true, 9), buffer)
-                val regS2 = ensureReg(finalS2, getScratchReg(size, isFloat = true, 10), buffer)
-
-                buffer += Asm.FCompare(regS1, regS2)
-                buffer.toList
-
-            case Asm.FpToFp(src, dest)       => expandConversion(src, dest, srcFloat = true, destFloat = true, Asm.FpToFp(_, _))
-            case Asm.SignedToFp(src, dest)   => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.SignedToFp(_, _))
-            case Asm.UnsignedToFp(src, dest) => expandConversion(src, dest, srcFloat = false, destFloat = true, Asm.UnsignedToFp(_, _))
-            case Asm.FpToSigned(src, dest)   => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToSigned(_, _))
-            case Asm.FpToUnsigned(src, dest) => expandConversion(src, dest, srcFloat = true, destFloat = false, Asm.FpToUnsigned(_, _))
-
-            case Asm.Sextb(src, dest) => expandExtend(Size.Byte1, true, src, dest)
-            case Asm.Sexth(src, dest) => expandExtend(Size.Byte2, true, src, dest)
-            case Asm.Sextw(src, dest) => expandExtend(Size.Byte4, true, src, dest)
-
-            case Asm.Uxtb(src, dest) => expandExtend(Size.Byte1, false, src, dest)
-            case Asm.Uxth(src, dest) => expandExtend(Size.Byte2, false, src, dest)
-            case Asm.Uxtw(src, dest) => expandExtend(Size.Byte4, false, src, dest)
-
-            case Asm.Unary(op, operand) => {
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val newOperand = replaceOperand(operand)
-                val size       = Asm.getOperandSize(newOperand)
-                val scratchReg = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-
-                newOperand match {
-                    case slot: Asm.StackSlot =>
-                        expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
-                        buffer += Asm.Unary(op, Asm.Register(scratchReg))
-                        expandLoadStore(Asm.Store(Asm.Register(scratchReg), slot), buffer)
-                    case data: Asm.Data =>
-                        val reg = ensureReg(data, scratchReg, buffer)
-                        buffer += Asm.Unary(op, reg)
-                        val scratchAddrReg = Asm.Reg.X10
-                        buffer += Asm.Adrp(Asm.Register(scratchAddrReg), data.location)
-                        buffer += Asm.StoreData(reg, data, Asm.Register(scratchAddrReg))
-                    case _ =>
-                        buffer += Asm.Unary(op, newOperand)
-                }
-                buffer.toList
+                case Nil => Nil
             }
-            case Asm.Binary(op, s1, s2, d) => {
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val resolvedS1 = replaceOperand(s1)
-                val resolvedS2 = replaceOperand(s2)
-                val finalD     = replaceOperand(d)
-
-                val size      = Asm.getOperandSize(resolvedS1)
-                val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-                val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
-                val scratchD  = if (size == Size.Byte8) Asm.Reg.X11 else Asm.Reg.W11
-
-                val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
-                val regS2 = ensureReg(resolvedS2, scratchS2, buffer)
-                val regD = finalD match {
-                    case r: Asm.Register => r
-                    case _               => Asm.Register(scratchD)
-                }
-
-                buffer += Asm.Binary(op, regS1, regS2, regD)
-                if (finalD.isInstanceOf[Asm.StackSlot]) {
-                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
-                } else if (finalD.isInstanceOf[Asm.Data]) {
-                    val d              = finalD.asInstanceOf[Asm.Data]
-                    val scratchAddrReg = Asm.Reg.X11
-                    buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
-                    buffer += Asm.StoreData(regD, d, Asm.Register(scratchAddrReg))
-                }
-                buffer.toList
-            }
-            case Asm.MultiplySubtract(s1, s2, s3, d) => {
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val resolvedS1 = replaceOperand(s1)
-                val resolvedS2 = replaceOperand(s2)
-                val resolvedS3 = replaceOperand(s3)
-                val finalD     = replaceOperand(d)
-
-                val size      = Asm.getOperandSize(resolvedS1)
-                val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-                val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
-                val scratchS3 = if (size == Size.Byte8) Asm.Reg.X11 else Asm.Reg.W11
-
-                val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
-                val regS2 = ensureReg(resolvedS2, scratchS2, buffer)
-                val regS3 = ensureReg(resolvedS3, scratchS3, buffer)
-                val regD  = if (finalD.isInstanceOf[Asm.Register]) finalD.asInstanceOf[Asm.Register] else Asm.Register(scratchS1)
-
-                buffer += Asm.MultiplySubtract(regS1, regS2, regS3, regD)
-                if (finalD.isInstanceOf[Asm.StackSlot]) {
-                    expandLoadStore(Asm.Store(regD, finalD.asInstanceOf[Asm.StackSlot]), buffer)
-                } else if (finalD.isInstanceOf[Asm.Data]) {
-                    val d              = finalD.asInstanceOf[Asm.Data]
-                    val scratchAddrReg = Asm.Reg.X11
-                    buffer += Asm.Adrp(Asm.Register(scratchAddrReg), d.location)
-                    buffer += Asm.StoreData(regD, d, Asm.Register(scratchAddrReg))
-                }
-                buffer.toList
-            }
-            case Asm.Compare(s1, s2) => {
-                val buffer     = ListBuffer[Asm.Instruction]()
-                val resolvedS1 = replaceOperand(s1)
-                val finalS2    = replaceOperand(s2)
-
-                val size      = Asm.getOperandSize(resolvedS1)
-                val scratchS1 = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-                val scratchS2 = if (size == Size.Byte8) Asm.Reg.X10 else Asm.Reg.W10
-
-                val regS1 = ensureReg(resolvedS1, scratchS1, buffer)
-                val regS2 = ensureReg(finalS2, scratchS2, buffer)
-
-                buffer += Asm.Compare(regS1, regS2)
-                buffer.toList
-            }
-            case Asm.ConditionalSet(condition, destination) => {
-                val finalDest = replaceOperand(destination)
-                finalDest match {
-                    case slot: Asm.StackSlot =>
-                        val buffer = ListBuffer[Asm.Instruction]()
-                        buffer += Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9))
-                        expandLoadStore(Asm.Store(Asm.Register(Asm.Reg.W9), slot), buffer)
-                        buffer.toList
-                    case data: Asm.Data =>
-                        val scratchAddrReg = Asm.Reg.X10
-                        List(
-                          Asm.ConditionalSet(condition, Asm.Register(Asm.Reg.W9)),
-                          Asm.Adrp(Asm.Register(scratchAddrReg), data.location),
-                          Asm.StoreData(Asm.Register(Asm.Reg.W9), data, Asm.Register(scratchAddrReg))
-                        )
-                    case _ => List(Asm.ConditionalSet(condition, finalDest))
-                }
-            }
-            case Asm.Call(target)          => List(Asm.Call(target))
-            case Asm.DeallocateStack(size) => List(Asm.DeallocateStack(size))
-            case Asm.Push(src) => {
-                val newSrc     = replaceOperand(src)
-                val size       = Asm.getOperandSize(newSrc)
-                val scratchReg = if (size == Size.Byte8) Asm.Reg.X9 else Asm.Reg.W9
-
-                newSrc match {
-                    case slot: Asm.StackSlot =>
-                        val buffer = ListBuffer[Asm.Instruction]()
-                        expandLoadStore(Asm.Load(slot, Asm.Register(scratchReg)), buffer)
-                        buffer += Asm.Push(Asm.Register(scratchReg))
-                        buffer.toList
-                    case data: Asm.Data =>
-                        val buffer = ListBuffer[Asm.Instruction]()
-                        val reg    = ensureReg(data, scratchReg, buffer)
-                        buffer += Asm.Push(reg)
-                        buffer.toList
-                    case other =>
-                        List(Asm.Push(other))
-                }
-            }
-            case Asm.Ret() =>
-                if (alignedBytes > 0) {
-                    List(Asm.DeallocateStack(alignedBytes), Asm.Ret())
-                } else {
-                    List(Asm.Ret())
-                }
-            case other => List(other)
         }
+
+        var newInstructions = expandedBuffer.toList
 
         if (alignedBytes > 0) {
             newInstructions = Asm.AllocateStack(alignedBytes) :: newInstructions

@@ -13,11 +13,14 @@ build:
 run file:
 	./sonnetc {{ file }} --verbose
 
-	mkdir -p build
-
+	# Extract the directory of the file and the filename without extension
+	@DIR=$(dirname "{{ file }}"); \
+	BASE=$(basename "{{ file }}" | cut -f 1 -d '.'); \
 	gcc -Wall -Wextra -Wpedantic -Werror \
-		build/$(basename {{ file }} | cut -f 1 -d '.').s \
+		"$DIR/build/$BASE.s" \
 		stdlib/*.c \
-		-o build/$(basename {{ file }} | cut -f 1 -d '.')
+		-o "$DIR/build/$BASE"
 
-	./build/$(basename {{ file }} | cut -f 1 -d '.')
+	@DIR=$(dirname "{{ file }}"); \
+	BASE=$(basename "{{ file }}" | cut -f 1 -d '.'); \
+	"$DIR/build/$BASE"
