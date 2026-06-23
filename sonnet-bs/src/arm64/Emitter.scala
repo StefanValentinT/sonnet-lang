@@ -195,6 +195,11 @@ class Emitter() {
             inst(s"$op $targetSrcStr, [x29, #$offset]")
         }
 
+        case Asm.LoadLabelAddr(destReg, label) => {
+            inst(s"adrp ${showOp(destReg)}, _${label}@GOTPAGE\n")
+            inst(s"add ${showOp(destReg)}, ${showOp(destReg)}, _${label}@GOTPAGEOFF")
+        }
+
         case Asm.LoadIndexed(dest, baseReg, offsetReg, size) => {
             val is64BitDest = Asm.getOperandSize(dest) == Size.Byte8
             val isFP = dest match {

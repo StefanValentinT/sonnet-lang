@@ -20,6 +20,8 @@ object Typed {
     abstract sealed class Expression
     case class Constant(const: Const, typ: Type)                                                       extends Expression
     case class Var(name: String, typ: Type)                                                            extends Expression
+    case class Ref(exp: Expression, typ: Type)                                                         extends Expression
+    case class Deref(exp: Expression, typ: Type)                                                       extends Expression
     case class Unary(op: UnaryOp, exp: Expression, typ: Type)                                          extends Expression
     case class Cast(exp: Expression, targetType: Type)                                                 extends Expression
     case class Binary(op: BinaryOp, exp1: Expression, exp2: Expression, typ: Type)                     extends Expression
@@ -40,6 +42,8 @@ def getTypedType(expr: Typed.Expression): Type =
         case Typed.Constant(_, t)        => t
         case Typed.Cast(_, t)            => t
         case Typed.Var(_, t)             => t
+        case Typed.Ref(_, t)             => t
+        case Typed.Deref(_, t)           => t
         case Typed.Unary(_, _, t)        => t
         case Typed.Binary(_, _, _, t)    => t
         case Typed.Assignment(_, _, t)   => t
@@ -201,12 +205,22 @@ object TypeChecker {
                     case _ => throw EpistemicError(s"Identifier '$target' is not a callable function.")
                 }
             case Assignment(target, value) => {
+                target match {
+                    case Var(_) | Deref(_) => ()
+                    case _                 => throw EpistemicError("Invalid l-value: Target of assignment must be a variable or a dereferenced pointer.")
+                }
+
                 val typedTarget = typecheckExpression(target)
                 val typedValue  = typecheckExpression(value)
-                if (getTypedType(typedTarget) != getTypedType(typedValue)) {
-                    throw EpistemicError("Type mismatch inside assignment operation.")
+
+                val targetType = getTypedType(typedTarget)
+                val valueType  = getTypedType(typedValue)
+
+                if (targetType != valueType) {
+                    throw EpistemicError(s"Type mismatch inside assignment operation. Cannot assign $valueType to $targetType.")
                 }
-                Typed.Assignment(typedTarget, typedValue, getTypedType(typedTarget))
+
+                Typed.Assignment(typedTarget, typedValue, targetType)
             }
             case Unary(op, e) => {
                 val typedExpr = typecheckExpression(e)
@@ -274,6 +288,20 @@ object TypeChecker {
             case Return(e) => {
                 val typedExpr = typecheckExpression(e)
                 Typed.Return(typedExpr, getTypedType(typedExpr))
+            }
+            case Ref(e) => {
+                val typedExpr = typecheckExpression(e)
+                Typed.Ref(typedExpr, Pointer(getTypedType(typedExpr)))
+            }
+            case Deref(e) => {
+                val typedExpr = typecheckExpression(e)
+                getTypedType(typedExpr) match {
+                    case Pointer(innerType) =>
+                        Typed.Deref(typedExpr, innerType)
+
+                    case _ =>
+                        throw new EpistemicError("Cannot dereference non-pointer.")
+                }
             }
             case Break(label) =>
                 Typed.Break(label, I32())

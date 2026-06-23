@@ -118,6 +118,8 @@ object VariableResolver {
                     case None                             => throw EpistemicError(s"Undeclared variable: $value")
                 }
             }
+            case Ref(exp)   => Ref(resolveExpression(exp, variableMap))
+            case Deref(exp) => Deref(resolveExpression(exp, variableMap))
             case FunctionCall(target, args) =>
                 variableMap.get(target) match {
                     case Some(MapEntry(uniqueName, _, _)) => FunctionCall(uniqueName, args.map(resolveExpression(_, variableMap)))
@@ -125,15 +127,9 @@ object VariableResolver {
                         throw EpistemicError(s"Undeclared function: $target")
                 }
             case Assignment(target, value) => {
-                target match {
-                    case Var(name) =>
-                        if (!variableMap.contains(name)) {
-                            throw EpistemicError(s"Undeclared variable assignment: $name")
-                        }
-                        Assignment(Var(variableMap(name).newName), resolveExpression(value, variableMap))
-                    case _ =>
-                        throw EpistemicError("Invalid l-value; target must be a variable node. This could also indicate that a compound operator was falsely used in a declaration.")
-                }
+                val resolvedTarget = resolveExpression(target, variableMap)
+                val resolvedValue  = resolveExpression(value, variableMap)
+                Assignment(resolvedTarget, resolvedValue)
             }
         }
     }

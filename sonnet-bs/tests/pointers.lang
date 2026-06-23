@@ -1,0 +1,35 @@
+import ../stdlib/print.lang;
+
+# expected stdout:
+# 15
+# 100
+# 200
+# 42
+
+fun modify_val(ptr: *u8) i32 {
+	ptr.! = 100u8;
+	return 0;
+};
+
+fun main() i32 {
+	var x : u8 = 25u8;
+	var p: *u8 = x.*;
+	p.! = 15u8;
+	print_u8(p.!);
+
+	modify_val(p);
+	print_u8(x);
+
+	var p2: *u8 = x.*;
+	p2.! = 200u8;
+	print_u8(p.!);
+
+	var value: u8 = 10u8;
+	var ptr1: *u8 = value.*;
+	var ptr2: **u8 = ptr1.*;
+	
+	ptr2.!.! = 42u8;
+	print_u8(value); # Should print 42
+
+	return 0;
+};

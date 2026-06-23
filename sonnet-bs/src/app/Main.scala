@@ -43,7 +43,8 @@ object App {
                 val importAst  = ImportResolver().resolve(ast, sourcePath.toString)
                 val fixedAst   = VariableResolver.resolveProgram(importAst)
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
-                val typedAst   = TypeChecker.typecheckProgram(labeledAst)
+                if (cfg.isVerbose) pprintln(fixedAst)
+                val typedAst = TypeChecker.typecheckProgram(labeledAst)
                 if (cfg.isVerbose) pprintln(typedAst)
 
                 val tacAst = TacEmitter(typedAst).emitProgramTac()

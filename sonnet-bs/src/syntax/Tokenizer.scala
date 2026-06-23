@@ -66,11 +66,10 @@ case class OpTilde()          extends Token // ~
 case class OpAs()             extends Token // as
 case class OpDot()            extends Token // .
 case class OpDoubleColon()    extends Token // ::
-case class OpRef()            extends Token // .*
-case class OpDeref()          extends Token // .!
+case class OpDeref()          extends Token // !
 case class OpPlus()           extends Token // +
 case class OpMinus()          extends Token // -
-case class OpMul()            extends Token // *
+case class OpStar()           extends Token // *
 case class OpRem()            extends Token // %
 case class OpDiv()            extends Token // /
 case class OpLt()             extends Token // <
@@ -162,8 +161,6 @@ class Tokenizer(input: String) {
       (Lit("|="), _ => OpOrAssign()),
       (Lit("^="), _ => OpBitXorAssign()),
       (Lit("->"), _ => OpArrow()),
-      (Lit(".*"), _ => OpRef()),
-      (Lit(".!"), _ => OpDeref()),
       (Lit("::"), _ => OpDoubleColon()),
       (Lit(">="), _ => OpGreaterOrEqual()),
       (Lit("<="), _ => OpLessOrEqual()),
@@ -187,7 +184,8 @@ class Tokenizer(input: String) {
       (Lit("."), _ => OpDot()),
       (Lit("+"), _ => OpPlus()),
       (Lit("-"), _ => OpMinus()),
-      (Lit("*"), _ => OpMul()),
+      (Lit("*"), _ => OpStar()),
+      (Lit("!"), _ => OpDeref()),
       (Lit("%"), _ => OpRem()),
       (Lit("/"), _ => OpDiv()),
       (Lit("("), _ => LParen()),

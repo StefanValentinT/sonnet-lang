@@ -45,6 +45,18 @@ def codegenInstruction(ins: Tac.Instruction): List[Asm.Instruction] = ins match 
           Asm.Ret()
         )
     }
+    case Tac.GetAddress(src, dest) => {
+        List(Asm.GetAddress(codegenTacVal(src), codegenTacVal(dest)))
+    }
+
+    case Tac.Load(src_ptr, dest) => {
+        List(Asm.LoadIndirect(codegenTacVal(src_ptr), codegenTacVal(dest)))
+    }
+
+    case Tac.Store(src, dest_ptr) => {
+        List(Asm.StoreIndirect(codegenTacVal(src), codegenTacVal(dest_ptr)))
+    }
+
     case Tac.Copy(src, dest) => {
         val t = getTacValType(src)
         List(movByOps(codegenTacVal(src), codegenTacVal(dest), t))

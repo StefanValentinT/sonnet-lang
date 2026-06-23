@@ -22,6 +22,8 @@ case class ExpressionStmt(exp: Expression)                                   ext
 abstract sealed class Expression
 case class Constant(const: Const)                                                       extends Expression
 case class Var(name: String)                                                            extends Expression
+case class Ref(exp: Expression)                                                         extends Expression
+case class Deref(exp: Expression)                                                       extends Expression
 case class Unary(op: UnaryOp, exp: Expression)                                          extends Expression
 case class Cast(exp: Expression, targetType: Type)                                      extends Expression
 case class Binary(op: BinaryOp, exp1: Expression, exp2: Expression)                     extends Expression
@@ -50,6 +52,7 @@ case class F16()                                  extends Type
 case class F32()                                  extends Type
 case class F64()                                  extends Type
 case class Bool()                                 extends Type
+case class Pointer(ref: Type)                     extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
 
 enum Const {

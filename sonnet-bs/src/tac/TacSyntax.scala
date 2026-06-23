@@ -12,6 +12,9 @@ object Tac {
 
     abstract sealed class Instruction
     case class Return(value: Val)                                          extends Instruction
+    case class GetAddress(src: Val, dest: Val)                             extends Instruction
+    case class Load(src_ptr: Val, dest: Val)                               extends Instruction
+    case class Store(src: Val, dest_ptr: Val)                              extends Instruction
     case class SignExtend(src: Val, dest: Val)                             extends Instruction
     case class ZeroExtend(src: Val, dest: Val)                             extends Instruction
     case class Truncate(src: Val, dest: Val)                               extends Instruction

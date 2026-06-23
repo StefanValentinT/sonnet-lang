@@ -1,11 +1,15 @@
 package tac
 
-import episteme.Typed
+import episteme.{Typed, getTypedType}
 import scala.collection.mutable.ListBuffer
 import tac.Tac.JumpIfZero
 import pprint.pprintln
 import app.CompilerError
 import syntax.*
+
+private sealed trait ExpressionResult
+private case class PlainOperand(value: Tac.Val)      extends ExpressionResult
+private case class DereferencedPointer(ptr: Tac.Val) extends ExpressionResult
 
 class TacEmitterError(detail: String) extends CompilerError("Three-address-code generator", detail)
 
@@ -80,6 +84,8 @@ class TacEmitter(prog: Typed.Program) {
         case F32() => Tac.F32()
         case F64() => Tac.F64()
 
+        case Pointer(_) => Tac.U64()
+
         case Bool() => Tac.I8()
 
         case _ => throw TacEmitterError("Not all types are supported in the backend yet.")
@@ -91,66 +97,99 @@ class TacEmitter(prog: Typed.Program) {
             case Linkage.Private => false
         }
 
-    def emitExpressionTac(e: Typed.Expression): Tac.Val = e match {
+    private def emitExpressionTacAndConvert(e: Typed.Expression): Tac.Val = {
+        emitExpressionTac(e) match {
+            case PlainOperand(v) => v
+            case DereferencedPointer(ptr) =>
+                val destType = convertType(getTypedType(e))
+                val dest     = newTemp(destType)
+                instructions += Tac.Load(ptr, dest)
+                dest
+        }
+    }
 
-        case Typed.TrueExpr()  => Tac.Constant(Const.I8Lit(1))
-        case Typed.FalseExpr() => Tac.Constant(Const.I8Lit(0))
+    def emitExpressionTac(e: Typed.Expression): ExpressionResult = e match {
+
+        case Typed.TrueExpr()  => PlainOperand(Tac.Constant(Const.I8Lit(1)))
+        case Typed.FalseExpr() => PlainOperand(Tac.Constant(Const.I8Lit(0)))
 
         case Typed.Constant(value, typ) =>
-            Tac.Constant(value)
+            PlainOperand(Tac.Constant(value))
         case Typed.Var(value, typ) =>
-            Tac.Var(value, convertType(typ))
-        case Typed.Assignment(Typed.Var(v, varType), rhs, typ) => {
-            val res = emitExpressionTac(rhs)
-            instructions += Tac.Copy(res, Tac.Var(v, convertType(varType)))
-            Tac.Var(v, convertType(varType))
+            PlainOperand(Tac.Var(value, convertType(typ)))
+
+        case Typed.Ref(inner, typ) =>
+            emitExpressionTac(inner) match {
+                case PlainOperand(obj) =>
+                    val dest = newTemp(convertType(typ))
+                    instructions += Tac.GetAddress(obj, dest)
+                    PlainOperand(dest)
+                case DereferencedPointer(ptr) =>
+                    PlainOperand(ptr)
+            }
+        case Typed.Deref(inner, typ) =>
+            val result = emitExpressionTacAndConvert(inner)
+            DereferencedPointer(result)
+
+        case Typed.Assignment(target, value, typ) => {
+            val lval = emitExpressionTac(target)
+            val rval = emitExpressionTacAndConvert(value)
+
+            lval match {
+                case PlainOperand(obj) =>
+                    instructions += Tac.Copy(rval, obj)
+                    PlainOperand(obj)
+                case DereferencedPointer(ptr) =>
+                    instructions += Tac.Store(rval, ptr)
+                    PlainOperand(rval)
+            }
         }
         case Typed.Block(statements, exp, typ) => {
             statements.foreach(emitStatementTac)
-            if exp.isDefined then emitExpressionTac(exp.get) else defaultVal(typ)
+            if exp.isDefined then PlainOperand(emitExpressionTacAndConvert(exp.get)) else PlainOperand(defaultVal(typ))
         }
         case Typed.If(cond, thenB, None, typ) => {
-            val c         = emitExpressionTac(cond)
+            val c         = emitExpressionTacAndConvert(cond)
             val dest      = newTemp(convertType(typ))
             val elseLabel = newLabel()
             val endLabel  = newLabel()
             instructions += Tac.JumpIfZero(c, elseLabel)
-            val v1 = emitExpressionTac(thenB)
+            val v1 = emitExpressionTacAndConvert(thenB)
             instructions += Tac.Copy(v1, dest)
             instructions += Tac.Jump(endLabel)
             instructions += elseLabel
             instructions += Tac.Copy(defaultVal(typ), dest)
             instructions += endLabel
-            dest
+            PlainOperand(dest)
         }
         case Typed.If(cond, thenB, Some(elseB), typ) => {
-            val c         = emitExpressionTac(cond)
+            val c         = emitExpressionTacAndConvert(cond)
             val dest      = newTemp(convertType(typ))
             val elseLabel = newLabel()
             val endLabel  = newLabel()
             instructions += Tac.JumpIfZero(c, elseLabel)
-            val v1 = emitExpressionTac(thenB)
+            val v1 = emitExpressionTacAndConvert(thenB)
             instructions += Tac.Copy(v1, dest)
             instructions += Tac.Jump(endLabel)
             instructions += elseLabel
-            val v2 = emitExpressionTac(elseB)
+            val v2 = emitExpressionTacAndConvert(elseB)
             instructions += Tac.Copy(v2, dest)
             instructions += endLabel
-            dest
+            PlainOperand(dest)
         }
         case Typed.Unary(op, exp, typ) => {
-            val srcVal  = emitExpressionTac(exp)
+            val srcVal  = emitExpressionTacAndConvert(exp)
             val destVar = newTemp(convertType(typ))
             instructions += Tac.Unary(convertUnOp(op), srcVal, destVar)
-            destVar
+            PlainOperand(destVar)
         }
 
         case Typed.Binary(BinaryOp.And, e1, e2, typ) => {
-            val v1         = emitExpressionTac(e1)
+            val v1         = emitExpressionTacAndConvert(e1)
             val falseLabel = newLabel()
             val endLabel   = newLabel()
             instructions += Tac.JumpIfZero(v1, falseLabel)
-            val v2 = emitExpressionTac(e2)
+            val v2 = emitExpressionTacAndConvert(e2)
             instructions += Tac.JumpIfZero(v2, falseLabel)
             val dest = newTemp(Tac.I32())
             instructions += Tac.Copy(Tac.Constant(Const.I32Lit(1)), dest)
@@ -158,15 +197,15 @@ class TacEmitter(prog: Typed.Program) {
             instructions += falseLabel
             instructions += Tac.Copy(Tac.Constant(Const.I32Lit(0)), dest)
             instructions += endLabel
-            dest
+            PlainOperand(dest)
         }
 
         case Typed.Binary(BinaryOp.Or, e1, e2, typ) => {
-            val v1         = emitExpressionTac(e1)
+            val v1         = emitExpressionTacAndConvert(e1)
             val falseLabel = newLabel()
             val endLabel   = newLabel()
             instructions += Tac.JumpIfNotZero(v1, falseLabel)
-            val v2 = emitExpressionTac(e2)
+            val v2 = emitExpressionTacAndConvert(e2)
             instructions += Tac.JumpIfNotZero(v2, falseLabel)
             val dest = newTemp(Tac.I32())
             instructions += Tac.Copy(Tac.Constant(Const.I32Lit(1)), dest)
@@ -174,31 +213,31 @@ class TacEmitter(prog: Typed.Program) {
             instructions += falseLabel
             instructions += Tac.Copy(Tac.Constant(Const.I32Lit(0)), dest)
             instructions += endLabel
-            dest
+            PlainOperand(dest)
         }
 
         case Typed.Binary(op, e1, e2, typ) => {
-            val v1   = emitExpressionTac(e1)
-            val v2   = emitExpressionTac(e2)
+            val v1   = emitExpressionTacAndConvert(e1)
+            val v2   = emitExpressionTacAndConvert(e2)
             val dest = newTemp(convertType(typ))
             instructions += Tac.Binary(convertBinOp(op), v1, v2, dest)
-            dest
+            PlainOperand(dest)
         }
 
         case Typed.While(cond, body, label, typ) => {
             val breakLabel    = Tac.Label(s"break_$label")
             val continueLabel = Tac.Label(s"continue_$label")
             instructions += continueLabel
-            val v = emitExpressionTac(cond)
+            val v = emitExpressionTacAndConvert(cond)
             instructions += Tac.JumpIfZero(v, breakLabel)
-            val b = emitExpressionTac(body)
+            val b = emitExpressionTacAndConvert(body)
             instructions += Tac.Jump(continueLabel)
             instructions += breakLabel
-            Tac.Constant(Const.I32Lit(0))
+            PlainOperand(Tac.Constant(Const.I32Lit(0)))
         }
 
         case Typed.Cast(exp, targetType) => {
-            val res      = emitExpressionTac(exp)
+            val res      = emitExpressionTacAndConvert(exp)
             val srcType  = getTacValType(res)
             val destType = convertType(targetType)
             val dest     = newTemp(destType)
@@ -209,9 +248,9 @@ class TacEmitter(prog: Typed.Program) {
             (isFloat(srcType), isFloat(destType)) match {
                 // float -> float
                 case (true, true) => {
-                    if (srcType == destType) return res
+                    if (srcType == destType) return PlainOperand(res)
                     instructions += Tac.FloatToFloat(res, dest)
-                    dest
+                    PlainOperand(dest)
                 }
                 // float -> int
                 case (true, false) => {
@@ -220,7 +259,7 @@ class TacEmitter(prog: Typed.Program) {
                     } else {
                         instructions += Tac.FloatToUnsignedInt(res, dest)
                     }
-                    dest
+                    PlainOperand(dest)
                 }
                 // int -> float
                 case (false, true) => {
@@ -229,22 +268,22 @@ class TacEmitter(prog: Typed.Program) {
                     } else {
                         instructions += Tac.UnsignedIntToFloat(res, dest)
                     }
-                    dest
+                    PlainOperand(dest)
                 }
 
                 // int -> int
                 case (false, false) => {
                     if (destSize == srcSize) {
-                        res
+                        PlainOperand(res)
                     } else if (destSize < srcSize) {
                         instructions += Tac.Truncate(res, dest)
-                        dest
+                        PlainOperand(dest)
                     } else if (isSigned(srcType)) {
                         instructions += Tac.SignExtend(res, dest)
-                        dest
+                        PlainOperand(dest)
                     } else {
                         instructions += Tac.ZeroExtend(res, dest)
-                        dest
+                        PlainOperand(dest)
                     }
                 }
             }
@@ -252,33 +291,33 @@ class TacEmitter(prog: Typed.Program) {
 
         case Typed.Break(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"break_$label"))
-            Tac.Constant(Const.I32Lit(0))
+            PlainOperand(Tac.Constant(Const.I32Lit(0)))
         }
         case Typed.Continue(label, typ) => {
             instructions += Tac.Jump(Tac.Label(s"continue_$label"))
-            Tac.Constant(Const.I32Lit(0))
+            PlainOperand(Tac.Constant(Const.I32Lit(0)))
         }
         case Typed.Return(exp, typ) => {
-            val resultVal = emitExpressionTac(exp)
+            val resultVal = emitExpressionTacAndConvert(exp)
             instructions += Tac.Return(resultVal)
-            Tac.Constant(Const.I32Lit(0))
+            PlainOperand(Tac.Constant(Const.I32Lit(0)))
         }
 
         case Typed.FunctionCall(target, args, typ) => {
             val dest = newTemp(convertType(typ))
-            instructions += Tac.FunctionCall(target, args.map(emitExpressionTac), dest)
-            dest
+            instructions += Tac.FunctionCall(target, args.map(emitExpressionTacAndConvert), dest)
+            PlainOperand(dest)
         }
     }
 
     def emitStatementTac(s: Typed.Statement): Unit = s match {
         case Typed.ExpressionStmt(exp) => {
-            emitExpressionTac(exp)
+            emitExpressionTacAndConvert(exp)
         }
         case Typed.VarDeclaration(name, typ, initializerOpt) =>
             initializerOpt match {
                 case Some(initExpr) =>
-                    val res = emitExpressionTac(initExpr)
+                    val res = emitExpressionTacAndConvert(initExpr)
                     instructions += Tac.Copy(res, Tac.Var(name, convertType(typ)))
                 case None =>
             }
@@ -286,7 +325,7 @@ class TacEmitter(prog: Typed.Program) {
 
     def emitFunctionDef(funcDef: Typed.FunctionDef): Tac.FunctionDef = {
         instructions.clear()
-        val ret = emitExpressionTac(funcDef.body)
+        val ret = emitExpressionTacAndConvert(funcDef.body)
         instructions += Tac.Return(ret)
 
         val params = funcDef.params.map({ case (pName, typ) => Tac.Var(pName, convertType(typ)) })

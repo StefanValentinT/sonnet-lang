@@ -99,6 +99,10 @@ object LoopLabeler {
 
             case Return(e) =>
                 Return(labelExpression(e, currentLabel))
+            case Ref(e) =>
+                Ref(labelExpression(e, currentLabel))
+            case Deref(e) =>
+                Deref(labelExpression(e, currentLabel))
             case FunctionCall(target, args) => FunctionCall(target, args.map(labelExpression(_, currentLabel)))
             case c @ Constant(_)            => c
             case v @ Var(_)                 => v

@@ -349,6 +349,9 @@ object PseudoRegisterReplacer {
             case Asm.UnsignedToFp(src, dest)         => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.FpToSigned(src, dest)           => registerOperandOffsets(src); registerOperandOffsets(dest)
             case Asm.FpToUnsigned(src, dest)         => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.GetAddress(src, dest)           => registerOperandOffsets(src); registerOperandOffsets(dest)
+            case Asm.LoadIndirect(srcPtr, dest)      => registerOperandOffsets(srcPtr); registerOperandOffsets(dest)
+            case Asm.StoreIndirect(srcVal, destPtr)  => registerOperandOffsets(srcVal); registerOperandOffsets(destPtr)
             case Asm.Unary(_, operand)               => registerOperandOffsets(operand)
             case Asm.Binary(_, s1, s2, d)            => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(d)
             case Asm.MultiplySubtract(s1, s2, s3, d) => registerOperandOffsets(s1); registerOperandOffsets(s2); registerOperandOffsets(s3); registerOperandOffsets(d)
@@ -449,6 +452,75 @@ object PseudoRegisterReplacer {
                                 case _ =>
                                     buffer += Asm.Unary(op, newOperand)
                             }
+                            buffer.toList
+                        }
+                        case Asm.GetAddress(src, dest) => {
+                            val buffer       = ListBuffer[Asm.Instruction]()
+                            val resolvedSrc  = replaceOperand(src)
+                            val resolvedDest = replaceOperand(dest)
+
+                            val regDest = resolvedDest match {
+                                case r: Asm.Register => r
+                                case _               => Asm.Register(Asm.Reg.X9)
+                            }
+
+                            resolvedSrc match {
+                                case Asm.StackSlot(offset, _) =>
+                                    if (offset >= -4095 && offset <= 4095) {
+                                        buffer += Asm.Binary(Asm.BinaryOp.Add, Asm.Register(Asm.Reg.X29), Asm.Imm64(offset), regDest)
+                                    } else {
+                                        buffer += Asm.Mov(Asm.Imm64(offset), Asm.Register(Asm.Reg.X10))
+                                        buffer += Asm.Binary(Asm.BinaryOp.Add, Asm.Register(Asm.Reg.X29), Asm.Register(Asm.Reg.X10), regDest)
+                                    }
+                                case d: Asm.Data =>
+                                    buffer += Asm.LoadLabelAddr(regDest, d.location)
+                                case _ => throw new RuntimeException("Cannot get address of non-memory operand")
+                            }
+
+                            if (resolvedDest.isInstanceOf[Asm.StackSlot]) {
+                                expandLoadStore(Asm.Store(regDest, resolvedDest.asInstanceOf[Asm.StackSlot]), buffer)
+                            } else if (resolvedDest.isInstanceOf[Asm.Data]) {
+                                val d           = resolvedDest.asInstanceOf[Asm.Data]
+                                val scratchAddr = Asm.Reg.X11
+                                buffer += Asm.Adrp(Asm.Register(scratchAddr), d.location)
+                                buffer += Asm.StoreData(regDest, d, Asm.Register(scratchAddr))
+                            }
+                            buffer.toList
+                        }
+                        case Asm.LoadIndirect(srcPtr, dest) => {
+                            val buffer       = ListBuffer[Asm.Instruction]()
+                            val resolvedPtr  = replaceOperand(srcPtr)
+                            val resolvedDest = replaceOperand(dest)
+                            val destSize     = Asm.getOperandSize(resolvedDest)
+
+                            val regPtr = ensureReg(resolvedPtr, Asm.Reg.X10, buffer)
+                            val regDest = resolvedDest match {
+                                case r: Asm.Register => r
+                                case _               => Asm.Register(getScratchReg(destSize, isFloat = false, 9))
+                            }
+
+                            buffer += Asm.LoadIndexed(regDest, regPtr, Asm.Register(Asm.Reg.XZR), destSize)
+
+                            if (resolvedDest.isInstanceOf[Asm.StackSlot]) {
+                                expandLoadStore(Asm.Store(regDest, resolvedDest.asInstanceOf[Asm.StackSlot]), buffer)
+                            } else if (resolvedDest.isInstanceOf[Asm.Data]) {
+                                val d           = resolvedDest.asInstanceOf[Asm.Data]
+                                val scratchAddr = Asm.Reg.X11
+                                buffer += Asm.Adrp(Asm.Register(scratchAddr), d.location)
+                                buffer += Asm.StoreData(regDest, d, Asm.Register(scratchAddr))
+                            }
+                            buffer.toList
+                        }
+                        case Asm.StoreIndirect(srcVal, destPtr) => {
+                            val buffer      = ListBuffer[Asm.Instruction]()
+                            val resolvedSrc = replaceOperand(srcVal)
+                            val resolvedPtr = replaceOperand(destPtr)
+                            val srcSize     = Asm.getOperandSize(resolvedSrc)
+
+                            val regSrc = ensureReg(resolvedSrc, getScratchReg(srcSize, isFloat = false, 9), buffer)
+                            val regPtr = ensureReg(resolvedPtr, Asm.Reg.X10, buffer)
+
+                            buffer += Asm.StoreIndexed(regSrc, regPtr, Asm.Register(Asm.Reg.XZR), srcSize)
                             buffer.toList
                         }
                         case Asm.Binary(op, s1, s2, d) => {

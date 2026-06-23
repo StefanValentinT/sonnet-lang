@@ -215,6 +215,8 @@ class Parser(tokenizer: Tokenizer) {
 
             case Some(KwBool()) => Bool()
 
+            case Some(OpStar()) => Pointer(parseType())
+
             case Some(LParen()) => {
                 val params = new ListBuffer[Type]()
 
@@ -255,13 +257,26 @@ class Parser(tokenizer: Tokenizer) {
         case OpPlus()                                                                                                                                                                                                                => 70
         case OpMinus()                                                                                                                                                                                                               => 70
         case OpRem()                                                                                                                                                                                                                 => 80
-        case OpMul()                                                                                                                                                                                                                 => 80
+        case OpStar()                                                                                                                                                                                                                => 80
         case OpDiv()                                                                                                                                                                                                                 => 80
         case OpAs()                                                                                                                                                                                                                  => 85
     }
 
     def parseExpression(minPrec: Int): Expression = {
         var left = parseFactor()
+
+        while (tokenizer.peek() == Some(OpDot())) {
+            tokenizer.consume()
+            tokenizer.next() match {
+                case Some(OpNot()) | Some(OpDeref()) =>
+                    left = Deref(left)
+                case Some(OpStar()) =>
+                    left = Ref(left)
+                // TODO: Field Acces
+                case other =>
+                    throw ParserError(s"Bad.")
+            }
+        }
 
         var nextTokenOpt = tokenizer.peek()
         while (
@@ -304,7 +319,7 @@ class Parser(tokenizer: Tokenizer) {
                 val op = opToken match {
                     case OpPlus()           => BinaryOp.Add
                     case OpMinus()          => BinaryOp.Subtract
-                    case OpMul()            => BinaryOp.Multiply
+                    case OpStar()           => BinaryOp.Multiply
                     case OpDiv()            => BinaryOp.Divide
                     case OpRem()            => BinaryOp.Remainder
                     case OpOr()             => BinaryOp.Or
@@ -447,8 +462,8 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def isBinaryOperator(t: Token): Boolean = t match {
-        case OpAs() | OpPlus() | OpMinus() | OpMul() | OpDiv() | OpRem() | OpAnd() | OpOr() | OpEqual() | OpNotEqual() | OpGreaterThan() | OpLessThan() | OpLessOrEqual() | OpGreaterOrEqual() | OpAssign() | OpBitAnd() | OpBitOr() | OpBitXor() | OpLShift() | OpRShift() | OpAddAssign() | OpSubAssign() | OpMulAssign() | OpDivAssign() | OpRemAssign() | OpAndAssign() | OpOrAssign() | OpBitAndAssign() | OpBitOrAssign() | OpBitXorAssign() | OpLShiftAssign() | OpRShiftAssign() => true
-        case _                                                                                                                                                                                                                                                                                                                                                                                                                                                                           => false
+        case OpAs() | OpPlus() | OpMinus() | OpStar() | OpDiv() | OpRem() | OpAnd() | OpOr() | OpEqual() | OpNotEqual() | OpGreaterThan() | OpLessThan() | OpLessOrEqual() | OpGreaterOrEqual() | OpAssign() | OpBitAnd() | OpBitOr() | OpBitXor() | OpLShift() | OpRShift() | OpAddAssign() | OpSubAssign() | OpMulAssign() | OpDivAssign() | OpRemAssign() | OpAndAssign() | OpOrAssign() | OpBitAndAssign() | OpBitOrAssign() | OpBitXorAssign() | OpLShiftAssign() | OpRShiftAssign() => true
+        case _                                                                                                                                                                                                                                                                                                                                                                                                                                                                            => false
     }
 
     def expect[T <: Token](using tag: ClassTag[T]): T = {

@@ -21,6 +21,7 @@ run file:
 		stdlib/*.c \
 		-o "$DIR/build/$BASE"
 
+	# Runtime Output:
 	@DIR=$(dirname "{{ file }}"); \
 	BASE=$(basename "{{ file }}" | cut -f 1 -d '.'); \
 	"$DIR/build/$BASE"

@@ -17,6 +17,10 @@ object Asm {
     case class Store(src: Register, dest: StackSlot)                                        extends Instruction
     case class LoadIndexed(dest: Register, base: Register, offsetReg: Register, size: Size) extends Instruction
     case class StoreIndexed(src: Register, base: Register, offsetReg: Register, size: Size) extends Instruction
+    case class GetAddress(src: Operand, dest: Operand)                                      extends Instruction
+    case class LoadIndirect(srcPtr: Operand, dest: Operand)                                 extends Instruction
+    case class StoreIndirect(srcVal: Operand, destPtr: Operand)                             extends Instruction
+    case class LoadLabelAddr(dest: Register, label: String)                                 extends Instruction
     case class Adrp(dest: Register, label: String)                                          extends Instruction
     case class LoadData(src: Data, baseReg: Register, dest: Register)                       extends Instruction
     case class StoreData(src: Register, dest: Data, baseReg: Register)                      extends Instruction

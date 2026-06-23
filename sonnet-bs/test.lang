@@ -1,20 +1,9 @@
 import ./stdlib/print.lang;
 
 # expected stdout:
-# 5
-
-var state : bool = false;
-
-fun change_state() i32 {
-	state = !state;
-};
-
-fun get_state() bool {
-	state
-};
+# 10
 
 fun main() i32 {
-	change_state();
-	var local : bool = get_state();
-	if local then print_i32(5) else print_i32(2);
+	print_i32(10);
+	0
 };
