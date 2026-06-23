@@ -1,9 +1,12 @@
 import ./stdlib/print.lang;
 
-# expected stdout:
-# 10
+fun add(a: i32, b: i32) *i32 {
+	var x : i32 = a+b;
+	x.*
+};
 
 fun main() i32 {
-	print_i32(10);
-	0
+	var p: *i32 = add(1,3);
+	var _ : *i32 = add(5,8);
+	print_i32(p.!)
 };

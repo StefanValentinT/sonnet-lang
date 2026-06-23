@@ -290,8 +290,12 @@ object TypeChecker {
                 Typed.Return(typedExpr, getTypedType(typedExpr))
             }
             case Ref(e) => {
-                val typedExpr = typecheckExpression(e)
-                Typed.Ref(typedExpr, Pointer(getTypedType(typedExpr)))
+                typecheckExpression(e) match {
+                    case v @ Typed.Var(_, _) =>
+                        Typed.Ref(v, Pointer(getTypedType(v)))
+                    case _ =>
+                        throw new EpistemicError("Cannot reference non-variable.")
+                }
             }
             case Deref(e) => {
                 val typedExpr = typecheckExpression(e)
