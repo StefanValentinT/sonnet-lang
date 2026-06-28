@@ -42,15 +42,9 @@
 		font: "New Computer Modern",
 		size: 11pt
 	)
-	show raw.where(block: true): it => block(
-		width: 100%,
-		stroke: 1pt + silver,
-		inset: 10pt,
-		layout(size => {
-			set text(hyphenate: false)
-			it
-		})
-	)
+	show raw.where(block: true): it => {
+		pad(left: 1em, it)
+	}
 	set par(
 		justify: true,
 		leading: 0.7em,

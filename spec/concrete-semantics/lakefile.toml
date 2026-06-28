@@ -1,0 +1,24 @@
+name = "concrete-semantics"
+version = "0.1.0"
+defaultTargets = ["ConcreteSemantics"]
+
+[[lean_lib]]
+name = "ConcreteSemantics"
+
+
+# [[lean_exe]]
+# name = "concrete-semantics"
+# root = "Main"
+
+[[require]]
+name = "LiterateLean"
+git = "https://github.com/tani/literate-lean.git"
+rev = "main"
+
+[[require]]
+name = "aesop"
+git = "https://github.com/leanprover-community/aesop"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"

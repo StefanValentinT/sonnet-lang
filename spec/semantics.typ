@@ -2,28 +2,28 @@
 
 = Semantics
 
-== Numeric Types
+== Numeric Types <numeric>
 
 The primitive types of numbers are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f16`, `f32` and `f64`. The number types of the form i$n$, u$n$ or f$n$ where $n in NN$ use $n$ bits for the representation of a value of this type. $n$ is a multiply of bit-length of a byte.
 
 More primitive number types may be defined by an implementation.
 
-=== Signed integer types
+=== Signed integer types <signed_numbers>
 The four signed integer types are `i8`, `i16`, `i32` and `i64`.
 
 A signed integer type i$n$ represents a value encoded using a two's-complement binary representation consisting of $n$ bits. The set of representable values $V_("i"n)$ for a type i$n$ is:
 
 $ V_("i"n) = { x in ZZ | -2^(n-1) <= x <= 2^(n-1) - 1 } $
 
-=== Unsigned integer types
+=== Unsigned integer types <unsigned_numbers>
 The four unsigned integer types are `u8`, `u16`, `u32` and `u64`.
 
 An unsigned integer type u$n$ represents a value encoded as a standard binary number. The set of representable values $V_("u"n)$ for a type u$n$ is:
 
 $ V_("u"n) = { x in ZZ | 0<= x <= 2^n - 1 } $
 
-=== Floating-point types
-The three floating-point types are f16, f32 and f64. A floating-point type f$n$ represents a value encoded using the IEEE 754 standard for floating-point arithmetic.
+=== Floating-point types <float_numbers>
+The three floating-point types are f16, f32 and f64. A floating-point type f$n$ represents a value encoded using the IEEE 754 standard for floating-point arithmetic @IEEE_754.
 
 Correspondence between floating-point types and the formats defined by IEEE 754:
 #grid(
@@ -36,12 +36,12 @@ Correspondence between floating-point types and the formats defined by IEEE 754:
 	[`f64`], [double-precision floating-point]
 )
 
-== Conversion between number types
+== Conversion between number types <conversion>
 
 === Conversion between integer types <con_princip>
 The conversion of an integer type to a larger integer type, where the target value set is a superset of the source value set, preserves the original value.
 
-=== Integer to integer of equal size
+=== Integer to integer of equal size <int_to_int_equal>
 The set of nonnegative values inhabiting a signed integer type is a subset of the set for the corresponding unsigned integer type, and the representation of the same value shall be identical in both types.
 
 A negative integer $a$ is converted to a positive unsigned integer by adding $2^n$ where n is the number of bits used to represent $a$. Conversely, converting an unsigned integer to a signed integer is done by subtracting $2^n$.
@@ -84,4 +84,4 @@ The result of converting a value of a floating-point type f$n$ to another floati
 - If the magnitude of the source value exceeds the maximum representable finite value of the target type, the result is implementation-defined.
 
 === Integer Overflow
-If an integer overflows the behaviour is left undefined.
+If an integer by means of any operation on it overflows the resulting value is implementation-defined.

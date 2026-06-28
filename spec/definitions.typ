@@ -17,7 +17,7 @@ The following definitions apply to the specification. Other terms are defined wh
 
 - A *character* is a member of a set of characters that make up the textual representation of a Sonnet program.
 
-- An *implementation-defined* value or behaviour is one left unspecified by the specification where each implementation must document its choice. A subset of this is *locale-defined* where rather than the implementation the circumstances of its invocation define certain behaviours.
+- An *implementation-defined* value or behaviour is one for which the specification provides multiple possibilites and imposes no further requirements on which is chosen in any instance where each implementation must document its choice. A subset of this is *locale-defined* where rather than the implementation the circumstances of its invocation define certain behaviours.
 	#example[
 	The behaviour of functions such as `is_lower` may depend on the language a user has set for their computer.
 	]
