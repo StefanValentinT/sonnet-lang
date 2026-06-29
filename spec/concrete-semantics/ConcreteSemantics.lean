@@ -9,29 +9,31 @@ they have been formalized in the Lean proof assistant.
 The complete formalization is included as part of this specification.
 Wherever possible, references to the corresponding informal definitions are provided.
 
+The formalization was carried out via a reference implementation
+that evaluates an abstract syntactic construct of a Sonnet program to the
+set of all its defined values, thereby encompassing every value
+the construct may yield in a conforming implementation.
+
+
 Numeric types as defined in @numeric.
 
 ```lean
-inductive NumericType : Type
-  | uInt    : Nat → NumericType
-  | int     : Nat → NumericType
-  | float   : Nat → NumericType
+inductive SonnetType : Type
+  | i8   : SonnetType
+  | i16   : SonnetType
+  | i32   : SonnetType
+  | i64   : SonnetType
+  | u8   : SonnetType
+  | u16   : SonnetType
+  | u32   : SonnetType
+  | u64   : SonnetType
+  | f16   : SonnetType
+  | f32   : SonnetType
+  | f64   : SonnetType
   deriving Repr
-
-def i8_type  : NumericType := NumericType.int 8
-def i16_type : NumericType := NumericType.int 16
-def i32_type : NumericType := NumericType.int 32
-def i64_type : NumericType := NumericType.int 64
-
-def u8_type  : NumericType := NumericType.uInt 8
-def u16_type : NumericType := NumericType.uInt 16
-def u32_type : NumericType := NumericType.uInt 32
-def u64_type : NumericType := NumericType.uInt 64
-
-def f16_type : NumericType := NumericType.float 16
-def f32_type : NumericType := NumericType.float 32
-def f64_type : NumericType := NumericType.float 64
 ```
+
+
 The set of representable values of a signed type (@signed_numbers) is defined by `representableInt`.
 
 ```lean

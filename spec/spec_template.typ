@@ -127,4 +127,11 @@
 	colbreak()
 	bibliography(bib, title: "References", style: "ieee")
 
+	/*
+	pagebreak()
+	set page(columns: 1)
+	align(center+horizon)[
+		#smallcaps(text(size:20pt)[Opus explicitum.])
+	]
+	*/
 }

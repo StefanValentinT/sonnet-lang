@@ -92,3 +92,86 @@ The expansion process of production rules terminates successfully if and only if
 
 ))])
 */
+
+= Abstract Syntax
+
+The abstract syntax describes the structure of a Sonnet program independent of its (textual) representation. It is presented in a similiar fashion as inductive datatypes in most programming languages. This naturally maps to their modelling within Lean in @concrete. In the grammar, $italic(x)^*$ denotes $italic(x)$ may appear once or multiple times.
+
+#let desc(x) = box(width: 5cm, align(right, [(#x)]))
+
+
+#place(
+	auto,
+	scope: "parent",
+	float: true,
+	[#figure(
+		$
+		mat(delim: #none,
+			italic("signedness"), :=, "Signed" divides "Unsigned", desc("integer signedness");
+			italic("intsize"), :=, 8 divides 16 divides 32 divides 64 , desc("integer size");
+			italic("float"), :=, "F16" divides "F32" divides "F64", desc("floating-point size") ;;
+			tau, :=, "int"(italic("intsize"), italic("signedness")), desc("integer type") ;,
+			divides, "float"(italic("float")), desc("float type") ;,
+			divides, "void", desc("the unit type") ;,
+			divides, "array"(tau, n), desc("array type") ;,
+			divides, "pointer"(tau), desc("pointer type") ;,
+			divides, "function"(tau^*, tau), desc("anonymous function type") ;,
+			divides, "struct"(phi), desc("anonymous struct type") ;,
+			divides, "union"(phi), desc("anonymous union type") ;,
+			divides, "pointer"(tau), desc("pointer to a type") ; ;
+			phi, :=, (x, tau)^*
+		) $,
+
+		caption: [The abstract syntax of types in Sonnet.]
+	)<abstract_syntax_types>]
+) 
+
+#place(
+	auto,
+	scope: "parent",
+	float: true,
+	[#figure(
+		$
+		mat(delim: #none,
+			
+			kappa, :=, *, desc("proper type") ;,
+			divides, * -> *, desc("type constructor") ;,
+		) $,
+
+		caption: [The abstract syntax of kinds.]
+	)<abstract_syntax_kinds>]
+) 
+
+== Types
+The abstract syntax for types is given in @abstract_syntax_types and in @abstract_syntax_kinds for kinds.
+
+== Terms
+
+#place(
+	auto,
+	scope: "parent",
+	float: true,
+	[#figure(
+		$
+		mat(delim: #none,
+			italic("signedness"), :=, "Signed" divides "Unsigned", desc("integer signedness");
+			italic("intsize"), :=, 8 divides 16 divides 32 divides 64 , desc("integer size");
+			italic("float"), :=, "F16" divides "F32" divides "F64", desc("floating-point size") ;;
+			tau, :=, "int"(italic("intsize"), italic("signedness")), desc("integer type") ;,
+			divides, "float"(italic("float")), desc("float type") ;,
+			divides, "void", desc("the unit type") ;,
+			divides, "array"(tau, n), desc("array type") ;,
+			divides, "pointer"(tau), desc("pointer type") ;,
+			divides, "function"(tau^*, tau), desc("anonymous function type") ;,
+			divides, "struct"(phi), desc("anonymous struct type") ;,
+			divides, "union"(phi), desc("anonymous union type") ;,
+			divides, "pointer"(tau), desc("pointer to a type") ; ;
+			phi, :=, (x, tau)^*
+		) $,
+
+		caption: [The abstract syntax of terms.]
+	)<abstract_syntax_terms>]
+)
+
+The abstract syntax for terms is given in @abstract_syntax_terms.
+

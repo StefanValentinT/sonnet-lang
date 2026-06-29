@@ -2,6 +2,11 @@
 
 = Semantics
 
+== Types
+
+All values have a type, and all types have a kind. Thus #linebreak()
+#align(center)[ $t : tau$, where $tau : kappa$ ]
+
 == Numeric Types <numeric>
 
 The primitive types of numbers are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f16`, `f32` and `f64`. The number types of the form i$n$, u$n$ or f$n$ where $n in NN$ use $n$ bits for the representation of a value of this type. $n$ is a multiply of bit-length of a byte.
