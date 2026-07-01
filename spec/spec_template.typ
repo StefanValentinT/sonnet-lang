@@ -1,3 +1,5 @@
+#import "@preview/hydra:0.6.2": hydra
+
 #let today = datetime.today()
 
 #let note(c) = [
@@ -53,12 +55,9 @@
 
 	set page(
 		header: context {
-			let page-num = counter(page).get().first()
-			if page-num > 1 {
-				align(right + horizon, title)
-			} else {
-				none
-			}
+			hydra()
+			h(1fr)
+			title
 		},
 		numbering: "1",
 		columns: 2,

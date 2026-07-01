@@ -1,15 +1,39 @@
 #import "spec_template.typ": *
+#import "@preview/curryst:0.6.0": rule, prooftree, rule-set
 
 = Semantics
 
 == Types
 
-All values have a type, and all types have a kind. Thus #linebreak()
-#align(center)[ $t : tau$, where $tau : kappa$ ]
+All terms have a type, written as $t : tau$. The context in which evaluation and typing occurs is written $Gamma$, thus $Gamma tack.r e : tau$ reads as "$e$ has type $tau$ in context $Gamma$".
 
+If a term is annotated with a type, that type must be compatible with the one determined by inference.
+
+== Typing rules
+
+The declarative type system of Sonnet is given in @fig_typing_rules.
+
+
+#place(
+	auto,
+	scope: "parent",
+	float: true,
+	[#figure(
+		grid(
+        columns: (1fr, 1fr),
+        column-gutter: 1.5em,
+        row-gutter: 0.8em,
+        	//prooftree()
+        )
+		,
+	caption: "Declarative typing rules of Sonnet")<fig_typing_rules>]
+)
+ 
+ 
 == Numeric Types <numeric>
 
-The primitive types of numbers are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f16`, `f32` and `f64`. The number types of the form i$n$, u$n$ or f$n$ where $n in NN$ use $n$ bits for the representation of a value of this type. $n$ is a multiply of bit-length of a byte.
+The numeric types are the only primitive types.
+They are `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f16`, `f32` and `f64`. The number types of the form i$n$, u$n$ or f$n$ where $n in NN$ use $n$ bits for the representation of a value of this type. $n$ is a multiply of bit-length of a byte.
 
 More primitive number types may be defined by an implementation.
 

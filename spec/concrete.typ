@@ -11,6 +11,6 @@
 }
 
 
-#include_skip("concrete-semantics/ConcreteSemantics.lean", n: 3)
+#include_skip("concrete-semantics/ConcreteSemantics.lean", n: 1)
 
 #set page(columns: 2)

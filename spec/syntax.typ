@@ -1,4 +1,5 @@
 #import "spec_template.typ": *
+#import "@preview/tdtr:0.5.5" : *
 
 = Syntax
 
@@ -93,12 +94,16 @@ The expansion process of production rules terminates successfully if and only if
 ))])
 */
 
-= Abstract Syntax
+= Abstract Syntax <abstract_types>
 
-The abstract syntax describes the structure of a Sonnet program independent of its (textual) representation. It is presented in a similiar fashion as inductive datatypes in most programming languages. This naturally maps to their modelling within Lean in @concrete. In the grammar, $italic(x)^*$ denotes $italic(x)$ may appear once or multiple times.
+The abstract syntax describes the structure of a Sonnet program independent of its textual
+representation.
+It is presented in a similiar fashion as inductive datatypes in most programming languages.
+This naturally maps to their modelling within Lean in @concrete.
+In the grammar, $italic(a)^*$ denotes that $italic(a)$ may appear once or multiple times. $x$ represents an identifier. The set of all possible expansions of a non-terminal $x$ is written as $epsilon(x)$.
+
 
 #let desc(x) = box(width: 5cm, align(right, [(#x)]))
-
 
 #place(
 	auto,
@@ -107,18 +112,19 @@ The abstract syntax describes the structure of a Sonnet program independent of i
 	[#figure(
 		$
 		mat(delim: #none,
-			italic("signedness"), :=, "Signed" divides "Unsigned", desc("integer signedness");
-			italic("intsize"), :=, 8 divides 16 divides 32 divides 64 , desc("integer size");
-			italic("float"), :=, "F16" divides "F32" divides "F64", desc("floating-point size") ;;
-			tau, :=, "int"(italic("intsize"), italic("signedness")), desc("integer type") ;,
-			divides, "float"(italic("float")), desc("float type") ;,
-			divides, "void", desc("the unit type") ;,
-			divides, "array"(tau, n), desc("array type") ;,
-			divides, "pointer"(tau), desc("pointer type") ;,
-			divides, "function"(tau^*, tau), desc("anonymous function type") ;,
+			iota, :=, "i8" divides "i16" divides "i32" divides "i64", desc("signed integer types") ;,
+			divides, "u8" divides "u16" divides "u32" divides "u64", desc("unsigned integer types") ;,
+			divides, "f16" divides "f32" divides "f64", desc("floating-point types");;
+
+			tau, :=, iota, desc("primitive types") ;,
+			divides, alpha, desc("type variable");,
+			divides, forall alpha . tau, desc("quantified type");,
+			divides, tau and tau, desc("intersection");,
+			divides, tau^* -> tau, desc("function type") ;,
+			divides, *tau, desc("pointer type") ;,
+			divides, [tau, n], desc("array type") ;,
 			divides, "struct"(phi), desc("anonymous struct type") ;,
-			divides, "union"(phi), desc("anonymous union type") ;,
-			divides, "pointer"(tau), desc("pointer to a type") ; ;
+			divides, "union"(phi), desc("anonymous union type") ;;
 			phi, :=, (x, tau)^*
 		) $,
 
@@ -126,24 +132,69 @@ The abstract syntax describes the structure of a Sonnet program independent of i
 	)<abstract_syntax_types>]
 ) 
 
-#place(
-	auto,
-	scope: "parent",
-	float: true,
-	[#figure(
-		$
-		mat(delim: #none,
-			
-			kappa, :=, *, desc("proper type") ;,
-			divides, * -> *, desc("type constructor") ;,
-		) $,
-
-		caption: [The abstract syntax of kinds.]
-	)<abstract_syntax_kinds>]
-) 
-
 == Types
-The abstract syntax for types is given in @abstract_syntax_types and in @abstract_syntax_kinds for kinds.
+
+The abstract syntax for types is given in @abstract_syntax_types.
+The set of types of some rank $n$ $T_n$ is a subset of the types derived by expansion of $tau$ as defined in this grammar.
+
+=== Rank
+A type is defined to be of rank $n$ with respect to a specific syntactic construct if every path from the root of the type tree to that construct traverses the left branch of fewer than $n$ function type constructors, as @examples_rank illustrates.
+
+#let tree = tidy-tree-graph.with(
+	draw-node: ((label,)) => (stroke: none, label: $label$),
+	draw-edge: (stroke: .5pt, marks: "-"),
+	spacing: (10pt, 10pt),
+	node-width: auto,
+	node-height: auto,
+)
+
+#figure(
+	grid(
+	columns: 2,
+	column-gutter: 2em,
+	tree[
+	- $->$
+		- $and$
+			- $a$
+			- $->$
+				- $b$
+				- $c$
+		- $and$
+			- $d$
+			- $e$
+	],
+	tree[
+	- $->$
+		- $->$
+			- $and$
+				- $a$
+				- $b$
+			- $c$
+
+		- $and$
+			- $d$
+			- $e$
+	]
+	),
+	caption: [Rank-2 intersection type on the left and a non-rank-2 type on the right.]
+) <examples_rank>
+
+Types of rank 0 are also called "simple types". $T_2$, the set of rank-2 intersection types, is defined inductively:
+
+$ T_0^(0) = epsilon(alpha) = T_1^(0) = T_2^(0) $
+
+For each natural number $i$, the sets $T_0^(i+1)$ and $T_1^(i+1)$ and $T_2^(i+1)$ are defined as follows:
+
+$ T_0^(i+1) = T_0^(0) union {(sigma -> tau) | sigma, tau in T_0^(i)} $
+
+$ T_1^(i+1) = T_0^(i+1) union {(sigma and tau) | sigma, tau in T_1^(i)} $
+
+$ T_2^(i+1) = T_0^(i+1) union {(sigma -> tau) | sigma in T_1^(i), tau in T_2^(i)} $
+
+Finally, let the complete sets of types be:
+
+$ T_2 = union.big_i T_2^(i) $
+$ T = T_2 union {(forall t. sigma) | sigma in T, t in epsilon(alpha)} $
 
 == Terms
 
@@ -154,19 +205,18 @@ The abstract syntax for types is given in @abstract_syntax_types and in @abstrac
 	[#figure(
 		$
 		mat(delim: #none,
-			italic("signedness"), :=, "Signed" divides "Unsigned", desc("integer signedness");
-			italic("intsize"), :=, 8 divides 16 divides 32 divides 64 , desc("integer size");
-			italic("float"), :=, "F16" divides "F32" divides "F64", desc("floating-point size") ;;
-			tau, :=, "int"(italic("intsize"), italic("signedness")), desc("integer type") ;,
-			divides, "float"(italic("float")), desc("float type") ;,
-			divides, "void", desc("the unit type") ;,
-			divides, "array"(tau, n), desc("array type") ;,
-			divides, "pointer"(tau), desc("pointer type") ;,
-			divides, "function"(tau^*, tau), desc("anonymous function type") ;,
-			divides, "struct"(phi), desc("anonymous struct type") ;,
-			divides, "union"(phi), desc("anonymous union type") ;,
-			divides, "pointer"(tau), desc("pointer to a type") ; ;
-			phi, :=, (x, tau)^*
+			eta, :=, x divides eta : tau;;
+
+			t, :=, x, desc("variable");,
+			divides, (n, iota), #desc([typed literals, $n in QQ$]) ;,
+			divides, t : tau, desc("annotation");,
+			divides, eta^* -> t, desc("function terms") ;,
+			divides, x(t^*), desc("function application");,
+			divides, {t^*}, desc("data literal");,
+			divides, "if" t "then" t "else" t, desc("conditional branching");,
+			divides, "while" t "do" t, desc("loop");,
+			divides, "return" t, desc("function exit");,
+			divides, "block" t^*, desc("")
 		) $,
 
 		caption: [The abstract syntax of terms.]
@@ -174,4 +224,11 @@ The abstract syntax for types is given in @abstract_syntax_types and in @abstrac
 )
 
 The abstract syntax for terms is given in @abstract_syntax_terms.
+A term is any construct that can be derived by expansion of $t$ as defined in this grammar.
+
+
+= Typing
+
+As a consequence of Rice's Theorem the type system can only be a syntactic mechanism to approximate a programs semantics @Rice1953. Thus it has been designed to allow the programmar great freedom in the way a program is written within the bounds of making both type checking and type inference sound and decidable. Since it has been shown that these restrictions severly limit the expressivness of a type system, excluding 
+
 
