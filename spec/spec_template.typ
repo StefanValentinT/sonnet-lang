@@ -55,9 +55,11 @@
 
 	set page(
 		header: context {
-			hydra()
-			h(1fr)
-			title
+			if counter(page).get().first() > 1  [
+			#hydra()
+			#h(1fr)
+			#title
+			]
 		},
 		numbering: "1",
 		columns: 2,

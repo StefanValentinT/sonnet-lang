@@ -138,7 +138,7 @@ The abstract syntax for types is given in @abstract_syntax_types.
 The set of types of some rank $n$ $T_n$ is a subset of the types derived by expansion of $tau$ as defined in this grammar.
 
 === Rank
-A type is defined to be of rank $n$ with respect to a specific syntactic construct if every path from the root of the type tree to that construct traverses the left branch of fewer than $n$ function type constructors, as @examples_rank illustrates.
+A type is of rank $n$ with respect to a specific syntactic construct if every path from the root of the type tree to that construct traverses the left branch of fewer than $n$ function type constructors, as @examples_rank illustrates.
 
 #let tree = tidy-tree-graph.with(
 	draw-node: ((label,)) => (stroke: none, label: $label$),
