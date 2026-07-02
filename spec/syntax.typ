@@ -118,7 +118,7 @@ In the grammar, $italic(a)^*$ denotes that $italic(a)$ may appear once or multip
 
 			tau, :=, iota, desc("primitive types") ;,
 			divides, alpha, desc("type variable");,
-			divides, forall alpha . tau, desc("quantified type");,
+			divides, forall alpha . tau, desc("universally quantified type");,
 			divides, tau and tau, desc("intersection");,
 			divides, tau^* -> tau, desc("function type") ;,
 			divides, *tau, desc("pointer type") ;,
@@ -136,9 +136,15 @@ In the grammar, $italic(a)^*$ denotes that $italic(a)$ may appear once or multip
 
 The abstract syntax for types is given in @abstract_syntax_types.
 The set of types of some rank $n$ $T_n$ is a subset of the types derived by expansion of $tau$ as defined in this grammar.
+The function type constructor $->$ associates to the right and binds weaker than all other type constructors,
+both $t -> sigma$ and $forall t.sigma$ extend rightward to the end of the expression within they occur,
+meaning $t -> t -> t and t$ is equal to $t->(t -> (t and t))$ and $forall t. t and i32$ to $forall t. (t and i32)$.
 
 === Rank
-A type is of rank $n$ with respect to a specific syntactic construct if every path from the root of the type tree to that construct traverses the left branch of fewer than $n$ function type constructors, as @examples_rank illustrates.
+A type is of rank $n$ with respect to a specific syntactic construct
+if every path from the root of the type tree to that construct 
+traverses the left branch of fewer than $n$ function type constructors,
+as @examples_rank illustrates.
 
 #let tree = tidy-tree-graph.with(
 	draw-node: ((label,)) => (stroke: none, label: $label$),
@@ -191,10 +197,15 @@ $ T_1^(i+1) = T_0^(i+1) union {(sigma and tau) | sigma, tau in T_1^(i)} $
 
 $ T_2^(i+1) = T_0^(i+1) union {(sigma -> tau) | sigma in T_1^(i), tau in T_2^(i)} $
 
-Finally, let the complete sets of types be:
+$T_2$ is the union of all construction stages.
 
 $ T_2 = union.big_i T_2^(i) $
+
+Finally, let the complete set of types $T$ be:
+
 $ T = T_2 union {(forall t. sigma) | sigma in T, t in epsilon(alpha)} $
+
+As is evident from the definition, quantification can only appear at the top-level of a type.
 
 == Terms
 
