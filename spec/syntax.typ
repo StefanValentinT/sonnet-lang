@@ -1,5 +1,6 @@
 #import "spec_template.typ": *
 #import "@preview/tdtr:0.5.5" : *
+#import "@preview/curryst:0.6.0": rule, prooftree, rule-set
 
 = Syntax
 
@@ -137,14 +138,13 @@ In the grammar, $italic(a)^*$ denotes that $italic(a)$ may appear once or multip
 The abstract syntax for types is given in @abstract_syntax_types.
 The set of types of some rank $n$ $T_n$ is a subset of the types derived by expansion of $tau$ as defined in this grammar.
 The function type constructor $->$ associates to the right and binds weaker than all other type constructors,
-both $t -> sigma$ and $forall t.sigma$ extend rightward to the end of the expression within they occur,
-meaning $t -> t -> t and t$ is equal to $t->(t -> (t and t))$ and $forall t. t and i32$ to $forall t. (t and i32)$.
+both $t_1 dots t_n -> sigma$ and $forall t.sigma$ extend rightward to the end of the expression within they occur,
+meaning $t -> t -> t and t$ is equal to $t->(t -> (t and t))$ and $forall t. t and t$ is equal to $forall t. (t and t)$.
 
 === Rank
 A type is of rank $n$ with respect to a specific syntactic construct
-if every path from the root of the type tree to that construct 
-traverses the left branch of fewer than $n$ function type constructors,
-as @examples_rank illustrates.
+if every path from the root of the type tree to that construct
+traverses the left branch of fewer than $n$ function type constructors.
 
 #let tree = tidy-tree-graph.with(
 	draw-node: ((label,)) => (stroke: none, label: $label$),
@@ -182,7 +182,7 @@ as @examples_rank illustrates.
 			- $e$
 	]
 	),
-	caption: [Rank-2 intersection type on the left and a non-rank-2 type on the right.]
+	caption: [A rank-2 intersection type on the left and a non-rank-2 type on the right.]
 ) <examples_rank>
 
 Types of rank 0 are also called "simple types". $T_2$, the set of rank-2 intersection types, is defined inductively:
@@ -191,21 +191,65 @@ $ T_0^(0) = epsilon(alpha) = T_1^(0) = T_2^(0) $
 
 For each natural number $i$, the sets $T_0^(i+1)$ and $T_1^(i+1)$ and $T_2^(i+1)$ are defined as follows:
 
-$ T_0^(i+1) = T_0^(0) union {(sigma -> tau) | sigma, tau in T_0^(i)} $
+$ T_0^(i+1) = T_0^(0) union {(sigma_1 dots sigma_n -> tau) 
+	| forall j. sigma_j in T_0^(i), tau in T_0^(i)} $
 
-$ T_1^(i+1) = T_0^(i+1) union {(sigma and tau) | sigma, tau in T_1^(i)} $
+$ T_1^(i+1) = T_0^(i+1) union {(sigma and tau) 
+	| sigma, tau in T_1^(i)} $
 
-$ T_2^(i+1) = T_0^(i+1) union {(sigma -> tau) | sigma in T_1^(i), tau in T_2^(i)} $
+$ T_2^(i+1) = T_1^(i+1) union {(sigma_1 dots sigma_n -> tau) 
+	| forall j. sigma_j in T_1^(i) , tau in T_2^(i)} $
 
-$T_2$ is the union of all construction stages.
+$T_2$ is the union of all rank-2 construction stages.
 
 $ T_2 = union.big_i T_2^(i) $
 
-Finally, let the complete set of types $T$ be:
+Finally, let the complete set of types be $T$:
 
 $ T = T_2 union {(forall t. sigma) | sigma in T, t in epsilon(alpha)} $
 
 As is evident from the definition, quantification can only appear at the top-level of a type.
+
+Since $and$ is commutative and idempotent ($alpha and alpha = alpha$) any rank-1 type may also be written as the intersection over a non-empty, finite set of simple types: $union.big and.big S "where" S subset.eq T_0 "and" S != emptyset$.
+
+#example[
+It is shown that the rank-2 type from @examples_rank is in fact contained within $T$:
+
+By definition, all type variables belong to $T_0^(0)$.
+
+Using the (reduced) definition for $T_0^(i+1)$:
+
+$ T_0^1 = T_0^(0) union {(sigma -> tau) | sigma, tau in T_0^0} $
+
+From $b, c in T_0^(0)$, it follows that $(b -> c) in T_0^(1)$
+
+From $T_0^(0) subset T_0^(1)$, it follows that $a, d, e in T_0^1$
+
+Using the definition of $T_1^1$:
+$ T_1^1 = T_0^1 union {(sigma and tau) | sigma, tau in T_1^0} $
+
+Because $T_1^0 = T_0^0$, it follows $(d and e) in T_1^1$
+
+Using the definition of $T_1^2$:
+$ T_1^2 = T_0^2 union {(sigma and tau) | sigma, tau in T_1^1} $
+
+Since $a in T_0^0 subset T_1^1$ and $ (b -> c) in T_0^0 subset T_1^1$, it follows that
+$(a and (b -> c)) in T_1^2$.
+
+Using the definition for $T_2^3$:
+
+$ T_2^3 = T_1^3 union {(sigma -> tau) | sigma in T_1^2, tau in T_2^2} $
+
+Since it has been established that $(a and (b -> c)) in T_1^2$ and 
+$(d and e) in T_1^1 subset.eq T_1^2 subset.eq T_2^2$.
+
+Therefore, by choosing these elements for $sigma$ and $tau$, the type is obtained:
+$ ((a and (b -> c)) -> (d and e)) in T_2^3 $
+
+Since $T_2^3 subset.eq T_2$ by definition of $T_2$ and $T_2 subset.eq T$ it has been shown that the type is contained within $T$.
+
+
+]
 
 == Terms
 
@@ -240,6 +284,46 @@ A term is any construct that can be derived by expansion of $t$ as defined in th
 
 = Typing
 
-As a consequence of Rice's Theorem the type system can only be a syntactic mechanism to approximate a programs semantics @Rice1953. Thus it has been designed to allow the programmar great freedom in the way a program is written within the bounds of making both type checking and type inference sound and decidable. Since it has been shown that these restrictions severly limit the expressivness of a type system, excluding 
+As a consequence of Rice's Theorem the type system can only be a syntactic mechanism to approximate a programs semantics @Rice1953. Thus it has been designed to allow the programmar great freedom in the way a program is written within the bounds of making both type checking and type inference sound and decidable.
+
+All terms have a type, written as $t : tau$. The context in which evaluation and typing occurs is written $Gamma$, thus $Gamma tack.r e : tau$ reads as "$e$ has type $tau$ in context $Gamma$". 
+
+A type environment, denoted by $Gamma$, is a relation between a set of variables and a set of types, defined as a finite set of distinct variable-type pairs ${x_1 : sigma_1, dots, x_n : sigma_n}$ that tracks the types of variables currently in scope. The domain of a type environment, written $"dom"(Gamma)$, is the set of all variable names present in the relation being ${x divides exists sigma. (x : sigma) in Gamma}$. For any variable $x in "dom"(Gamma)$, $Gamma(x) = sigma$ is defined such that $(x : sigma) in Gamma$.
+
+A typing judgment $Gamma tack.r t : tau$ asserts that a term $t$ is of type $tau$ in the type environment $Gamma$.
 
 
+
+The typing rules are given in @typing_rules. The types used in the position of premises are of rank 1, whereas those derived are of rank 2.
+
+
+#place(
+	auto,
+	scope: "parent",
+	float: true,
+	[#figure(
+	grid(
+		columns: (1fr),
+		row-gutter: 2em,
+		column-gutter: 2em,
+		prooftree(vertical-spacing: 0.35em, rule(
+			label: [(Var)#h(1em)],
+			[$Gamma union {x : and.big_(i in I) tau_i}$],
+			[$i_0 in I$],
+			[$Gamma tack.r x : tau_(i_0)$]
+		)),
+		prooftree(vertical-spacing: 0.35em, rule(
+			label: [(ABS) #h(1em)],
+			[$Gamma union {x_1 : sigma_1, dots, x_n : sigma_n} tack.r t : tau$],
+			[
+				$"where" sigma_i = cases(
+					tau_i &"if" eta_i = (x_i : tau_i),
+					alpha_i &"if" eta_i = x_i
+				)$
+			],
+			[$A tack.r (eta_1, dots, eta_n -> t) : (sigma_1 dots sigma_n) -> tau$]
+		)),
+
+	), caption: "The declarative typing rules of Sonnet."
+) <typing_rules>
+])

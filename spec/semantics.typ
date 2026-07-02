@@ -2,32 +2,6 @@
 #import "@preview/curryst:0.6.0": rule, prooftree, rule-set
 
 = Semantics
-
-== Types
-
-All terms have a type, written as $t : tau$. The context in which evaluation and typing occurs is written $Gamma$, thus $Gamma tack.r e : tau$ reads as "$e$ has type $tau$ in context $Gamma$".
-
-If a term is annotated with a type, that type must be compatible with the one determined by inference.
-
-== Typing rules
-
-The declarative type system of Sonnet is given in @fig_typing_rules.
-
-
-#place(
-	auto,
-	scope: "parent",
-	float: true,
-	[#figure(
-		grid(
-        columns: (1fr, 1fr),
-        column-gutter: 1.5em,
-        row-gutter: 0.8em,
-        	//prooftree()
-        )
-		,
-	caption: "Declarative typing rules of Sonnet")<fig_typing_rules>]
-)
  
  
 == Numeric Types <numeric>

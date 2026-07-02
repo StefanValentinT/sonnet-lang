@@ -48,5 +48,12 @@ structure IntersectionType where
   components : NonEmptyList SimpleType
   deriving Repr
 
+inductive Rank2Type : Type where
+  | simple : SimpleType → Rank2Type
+  | inter : IntersectionType → Rank2Type
+  | arrow : IntersectionType → Rank2Type → Rank2Type
+  deriving Repr
+
+
 ```
 
