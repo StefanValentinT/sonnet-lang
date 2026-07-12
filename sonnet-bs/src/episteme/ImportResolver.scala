@@ -8,6 +8,7 @@ import java.nio.file.{Paths, Path}
 
 class ImportResolverError(detail: String) extends CompilerError("Import Resolution Pass", detail)
 
+// TODO: proper module system that respects privateness
 class ImportResolver {
     private val visitedPaths = Set[String]()
 

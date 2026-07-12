@@ -8,7 +8,6 @@ import ../stdlib/print.lang;
 
 fun modify_val(ptr: *u8) i32 {
 	ptr.! = 100u8;
-	return 0;
 };
 
 fun main() i32 {
@@ -30,6 +29,4 @@ fun main() i32 {
 	
 	ptr2.!.! = 42u8;
 	print_u8(value); # Should print 42
-
-	return 0;
 };

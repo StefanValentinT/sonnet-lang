@@ -56,17 +56,19 @@ object Asm {
     case class FpToUnsigned(src: Operand, dest: Operand) extends Instruction
 
     abstract sealed class Operand
-    case class Imm8(value: Int)                    extends Operand
-    case class Imm16(value: Long)                  extends Operand
-    case class Imm32(value: Int)                   extends Operand
-    case class Imm64(value: Long)                  extends Operand
-    case class Float16Lit(value: Float)            extends Operand
-    case class Float32Lit(value: Float)            extends Operand
-    case class Float64Lit(value: Double)           extends Operand
-    case class Register(reg: Reg)                  extends Operand
-    case class PseudoReg(name: String, size: Size) extends Operand
-    case class StackSlot(offset: Int, size: Size)  extends Operand
-    case class Data(location: String, size: Size)  extends Operand
+    case class Imm8(value: Int)                           extends Operand
+    case class Imm16(value: Long)                         extends Operand
+    case class Imm32(value: Int)                          extends Operand
+    case class Imm64(value: Long)                         extends Operand
+    case class Float16Lit(value: Float)                   extends Operand
+    case class Float32Lit(value: Float)                   extends Operand
+    case class Float64Lit(value: Double)                  extends Operand
+    case class Register(reg: Reg)                         extends Operand
+    case class PseudoReg(name: String, size: Size)        extends Operand
+    case class PseudoMem(name: String, size: Size)        extends Operand
+    case class Indexed(base: Reg, index: Reg, scale: Int) extends Operand
+    case class StackSlot(offset: Int, size: Size)         extends Operand
+    case class Data(location: String, size: Size)         extends Operand
 
     def getOperandSize(op: Asm.Operand): Size = op match {
         case Asm.Imm8(_)  => Size.Byte1

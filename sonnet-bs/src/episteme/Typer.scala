@@ -19,6 +19,7 @@ object Typed {
 
     abstract sealed class Expression
     case class Constant(const: Const, typ: Type)                                                       extends Expression
+    case class ArrayLit(values: List[Expression], typ: ArrayType)                                      extends Expression
     case class Var(name: String, typ: Type)                                                            extends Expression
     case class Ref(exp: Expression, typ: Type)                                                         extends Expression
     case class Deref(exp: Expression, typ: Type)                                                       extends Expression
@@ -40,6 +41,7 @@ object Typed {
 def getTypedType(expr: Typed.Expression): Type =
     expr match {
         case Typed.Constant(_, t)        => t
+        case Typed.ArrayLit(_, t)        => t
         case Typed.Cast(_, t)            => t
         case Typed.Var(_, t)             => t
         case Typed.Ref(_, t)             => t
@@ -180,6 +182,8 @@ object TypeChecker {
             case TrueExpr()  => Typed.TrueExpr()
             case FalseExpr() => Typed.FalseExpr()
 
+            case ArrayLit(values, typ) => Typed.ArrayLit(values.map(typecheckExpression), typ)
+
             case Var(name) =>
                 symbols.get(name) match {
                     case Some(FunType(_, _)) => throw CheckedError
@@ -237,21 +241,35 @@ object TypeChecker {
                 val t1      = getTypedType(typedE1)
                 val t2      = getTypedType(typedE2)
                 if (t1 != t2) {
-                    throw EpistemicError(s"Type mismatch in binary operation: $t1 and $t2 do not match.")
-                }
-                if (!isNumericType(t1)) {
-                    throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
-                }
-                op match {
-                    case BinaryOp.Equal | BinaryOp.NotEqual | BinaryOp.LessThan | BinaryOp.LessOrEqual | BinaryOp.GreaterThan | BinaryOp.GreaterOrEqual => if (!isNumericType(t1)) then throw EpistemicError(s"Relational operator requires numeric types, found: $t1.")
-                    case BinaryOp.Add | BinaryOp.Divide | BinaryOp.Subtract | BinaryOp.Multiply                                                         => if (!isNumericType(t1)) then throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
-                    case BinaryOp.Remainder | BinaryOp.BitAnd | BinaryOp.BitOr | BinaryOp.BitXor | BinaryOp.LShift | BinaryOp.RShift                    => if !(isIntegerType(t1)) then throw EpistemicError(s"Remainder and Bit operators requires integer types, found: $t1.")
-                    case BinaryOp.And | BinaryOp.Or                                                                                                     => if t1 != Bool() then throw EpistemicError(s"Logical operators require bool type, found: $t1.")
-                }
-                if (isComparisonOp(op)) {
-                    Typed.Binary(op, typedE1, typedE2, Bool())
+                    val e = EpistemicError(s"Type mismatch in binary operation: $t1 and $t2 do not match.")
+                    t1 match {
+                        case Pointer(r) =>
+                            t2 match {
+                                case U64() => Typed.Binary(op, typedE1, typedE2, Pointer(r))
+                                case _     => throw e
+                            }
+                        case U64() =>
+                            t2 match {
+                                case Pointer(r) => Typed.Binary(op, typedE1, typedE2, Pointer(r))
+                                case _          => throw e
+                            }
+                        case _ => throw e
+                    }
                 } else {
-                    Typed.Binary(op, typedE1, typedE2, t1)
+                    if (!isNumericType(t1)) {
+                        throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
+                    }
+                    op match {
+                        case BinaryOp.Equal | BinaryOp.NotEqual | BinaryOp.LessThan | BinaryOp.LessOrEqual | BinaryOp.GreaterThan | BinaryOp.GreaterOrEqual => if (!isNumericType(t1)) then throw EpistemicError(s"Relational operator requires numeric types, found: $t1.")
+                        case BinaryOp.Add | BinaryOp.Divide | BinaryOp.Subtract | BinaryOp.Multiply                                                         => if (!isNumericType(t1)) then throw EpistemicError(s"Binary operator requires numeric types, found: $t1.")
+                        case BinaryOp.Remainder | BinaryOp.BitAnd | BinaryOp.BitOr | BinaryOp.BitXor | BinaryOp.LShift | BinaryOp.RShift                    => if !(isIntegerType(t1)) then throw EpistemicError(s"Remainder and Bit operators requires integer types, found: $t1.")
+                        case BinaryOp.And | BinaryOp.Or                                                                                                     => if t1 != Bool() then throw EpistemicError(s"Logical operators require bool type, found: $t1.")
+                    }
+                    if (isComparisonOp(op)) {
+                        Typed.Binary(op, typedE1, typedE2, Bool())
+                    } else {
+                        Typed.Binary(op, typedE1, typedE2, t1)
+                    }
                 }
             }
             case Cast(exp, targetType) => Typed.Cast(typecheckExpression(exp), targetType)
@@ -291,6 +309,8 @@ object TypeChecker {
             }
             case Ref(e) => {
                 typecheckExpression(e) match {
+                    case v @ Typed.Var(_, ArrayType(elem, _)) =>
+                        Typed.Ref(v, Pointer(elem))
                     case v @ Typed.Var(_, _) =>
                         Typed.Ref(v, Pointer(getTypedType(v)))
                     case _ =>

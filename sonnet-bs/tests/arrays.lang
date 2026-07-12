@@ -1,4 +1,16 @@
-import ./stdlib/print.lang;
+import ../stdlib/print.lang;
+
+# expected stdout:
+# 0
+# 1
+# 1
+# 2
+# 3
+# 5
+# 8
+# 13
+# 21
+# 34
 
 fun generate_fib(base_ptr: *i32, count: i32) i32 {
 	base_ptr[0u64] = 0;

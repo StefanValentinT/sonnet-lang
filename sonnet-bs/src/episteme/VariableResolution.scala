@@ -118,6 +118,8 @@ object VariableResolver {
                     case None                             => throw EpistemicError(s"Undeclared variable: $value")
                 }
             }
+            case ArrayLit(values, typ) =>
+                ArrayLit(values.map(e => resolveExpression(e, variableMap)), typ)
             case Ref(exp)   => Ref(resolveExpression(exp, variableMap))
             case Deref(exp) => Deref(resolveExpression(exp, variableMap))
             case FunctionCall(target, args) =>

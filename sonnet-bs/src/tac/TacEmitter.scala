@@ -84,7 +84,8 @@ class TacEmitter(prog: Typed.Program) {
         case F32() => Tac.F32()
         case F64() => Tac.F64()
 
-        case Pointer(_) => Tac.U64()
+        case Pointer(_)      => Tac.U64()
+        case ArrayType(_, _) => Tac.U64()
 
         case Bool() => Tac.I8()
 
@@ -113,6 +114,21 @@ class TacEmitter(prog: Typed.Program) {
         case Typed.TrueExpr()  => PlainOperand(Tac.Constant(Const.I8Lit(1)))
         case Typed.FalseExpr() => PlainOperand(Tac.Constant(Const.I8Lit(0)))
 
+        case Typed.ArrayLit(values, typ) => {
+            val elemTacType     = convertType(typ.elem)
+            val elemSizeInBytes = Size.fromTacType(elemTacType).bytes
+
+            val destType = convertType(typ)
+            val dest     = newTemp(destType)
+
+            values.zipWithIndex.foreach { case (elemExpr, index) =>
+                val evaluatedElem = emitExpressionTacAndConvert(elemExpr)
+                val currentOffset = index * elemSizeInBytes
+                instructions += Tac.CopyToOffset(evaluatedElem, dest, currentOffset)
+            }
+            PlainOperand(dest)
+        }
+        
         case Typed.Constant(value, typ) =>
             PlainOperand(Tac.Constant(value))
         case Typed.Var(value, typ) =>
@@ -217,11 +233,43 @@ class TacEmitter(prog: Typed.Program) {
         }
 
         case Typed.Binary(op, e1, e2, typ) => {
-            val v1   = emitExpressionTacAndConvert(e1)
-            val v2   = emitExpressionTacAndConvert(e2)
-            val dest = newTemp(convertType(typ))
-            instructions += Tac.Binary(convertBinOp(op), v1, v2, dest)
-            PlainOperand(dest)
+            val t1 = getTypedType(e1)
+            val t2 = getTypedType(e2)
+
+            if (op == BinaryOp.Add && (t1.isInstanceOf[Pointer] || t1.isInstanceOf[ArrayType])) {
+                val basePtr  = emitExpressionTacAndConvert(e1)
+                val indexVal = emitExpressionTacAndConvert(e2)
+                val dest     = newTemp(convertType(typ))
+
+                val elemType = t1 match {
+                    case Pointer(inner)      => inner
+                    case ArrayType(inner, _) => inner
+                    case _                   => t1
+                }
+                val elemSize = Size.fromTacType(convertType(elemType)).bytes
+                instructions += Tac.AddPtr(basePtr, indexVal, elemSize.toInt, dest)
+                PlainOperand(dest)
+            } else if (op == BinaryOp.Add && (t2.isInstanceOf[Pointer] || t2.isInstanceOf[ArrayType])) {
+                val indexVal = emitExpressionTacAndConvert(e1)
+                val basePtr  = emitExpressionTacAndConvert(e2)
+                val dest     = newTemp(convertType(typ))
+
+                val elemType = t2 match {
+                    case Pointer(inner)      => inner
+                    case ArrayType(inner, _) => inner
+                    case _                   => t2
+                }
+                val elemSize = Size.fromTacType(convertType(elemType)).bytes
+
+                instructions += Tac.AddPtr(basePtr, indexVal, elemSize.toInt, dest)
+                PlainOperand(dest)
+            } else {
+                val v1   = emitExpressionTacAndConvert(e1)
+                val v2   = emitExpressionTacAndConvert(e2)
+                val dest = newTemp(convertType(typ))
+                instructions += Tac.Binary(convertBinOp(op), v1, v2, dest)
+                PlainOperand(dest)
+            }
         }
 
         case Typed.While(cond, body, label, typ) => {

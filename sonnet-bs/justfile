@@ -13,7 +13,10 @@ build:
 run file:
 	./sonnetc {{ file }} --verbose
 
-	# Extract the directory of the file and the filename without extension
+	@DIR=$(dirname "{{ file }}"); \
+	BASE=$(basename "{{ file }}" | cut -f 1 -d '.'); \
+	qbe "$DIR/build/$BASE.qbe" > "$DIR/build/$BASE.s"
+
 	@DIR=$(dirname "{{ file }}"); \
 	BASE=$(basename "{{ file }}" | cut -f 1 -d '.'); \
 	gcc -Wall -Wextra -Wpedantic -Werror \

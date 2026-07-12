@@ -71,6 +71,8 @@ object LoopLabeler {
                     case None        => throw EpistemicError("continue statement outside of loop")
                 }
             }
+            case ArrayLit(values, typ) =>
+                ArrayLit(values.map(e => labelExpression(e, currentLabel)), typ)
 
             case Block(stmts, finalExp) => {
                 val labeledStmts = stmts.map(s => labelStatement(s, currentLabel))

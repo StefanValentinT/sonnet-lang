@@ -217,6 +217,27 @@ class Parser(tokenizer: Tokenizer) {
 
             case Some(OpStar()) => Pointer(parseType())
 
+            case Some(LBracket()) => {
+                val sizeExpr = parseExpression(0)
+
+                val size = sizeExpr match {
+                    case Constant(Const.I8Lit(v))  => v
+                    case Constant(Const.I16Lit(v)) => v
+                    case Constant(Const.I32Lit(v)) => v
+                    case Constant(Const.I64Lit(v)) => v
+                    case Constant(Const.U8Lit(v))  => v
+                    case Constant(Const.U16Lit(v)) => v
+                    case Constant(Const.U32Lit(v)) => v
+                    case Constant(Const.U64Lit(v)) => v
+                    case _                         => throw ParserError("Array size must be a static integer constant literal.")
+                }
+
+                expect(RBracket())
+                val elementType = parseType()
+
+                ArrayType(elementType, size)
+            }
+
             case Some(LParen()) => {
                 val params = new ListBuffer[Type]()
 
@@ -265,16 +286,30 @@ class Parser(tokenizer: Tokenizer) {
     def parseExpression(minPrec: Int): Expression = {
         var left = parseFactor()
 
-        while (tokenizer.peek() == Some(OpDot())) {
-            tokenizer.consume()
-            tokenizer.next() match {
-                case Some(OpNot()) | Some(OpDeref()) =>
-                    left = Deref(left)
-                case Some(OpStar()) =>
-                    left = Ref(left)
-                // TODO: Field Acces
-                case other =>
-                    throw ParserError(s"Bad.")
+        var parsingPostfix = true
+        while (parsingPostfix) {
+            tokenizer.peek() match {
+                case Some(OpDot()) => {
+                    tokenizer.consume()
+                    tokenizer.next() match {
+                        case Some(OpNot()) | Some(OpDeref()) =>
+                            left = Deref(left)
+                        case Some(OpStar()) =>
+                            left = Ref(left)
+                        // TODO: Field Acces
+                        case other =>
+                            throw ParserError(s"Bad.")
+                    }
+                }
+                case Some(LBracket()) => {
+                    tokenizer.consume()
+                    val indexExpr = parseExpression(0)
+                    expect(RBracket())
+                    val addition = Binary(BinaryOp.Add, left, indexExpr)
+                    left = Deref(addition)
+                }
+                case _ =>
+                    parsingPostfix = false
             }
         }
 
@@ -346,119 +381,144 @@ class Parser(tokenizer: Tokenizer) {
     }
 
     def parseFactor(directNegation: Boolean = false): Expression = {
-        tokenizer.next() match {
-            case Some(LBrace()) => parseBlock()
+        if tokenizer.peek() == Some(LBracket()) then {
+            val arrType = parseType() match {
+                case a: ArrayType => a
+                case other        => throw ParserError(s"Expected array type in front of array literal, but got $other.")
+            }
 
-            case Some(TokTrue())  => TrueExpr()
-            case Some(TokFalse()) => FalseExpr()
+            expect(LBrace())
+            val values = new ListBuffer[Expression]()
 
-            case Some(TokU8Lit(value))  => Constant(Const.U8Lit(value))
-            case Some(TokU16Lit(value)) => Constant(Const.U16Lit(value))
-            case Some(TokU32Lit(value)) => Constant(Const.U32Lit(value))
-            case Some(TokU64Lit(value)) => Constant(Const.U64Lit(value))
-
-            case Some(TokF16Lit(value)) => Constant(Const.F16Lit(value))
-            case Some(TokF32Lit(value)) => Constant(Const.F32Lit(value))
-            case Some(TokF64Lit(value)) => Constant(Const.F64Lit(value))
-
-            case Some(TokI8Lit(value)) =>
-                if (!directNegation) {
-                    val max = BigInt(2).pow(7) - 1
-                    if (value > max) throw ParserError(s"8-bit integer literal '$value' exceeds its maximum allowed positive bound.")
+            if (tokenizer.peek() != Some(RBrace())) {
+                values += parseExpression(0)
+                while (tokenizer.peek() == Some(OpComma())) {
+                    tokenizer.consume()
+                    values += parseExpression(0)
                 }
-                Constant(Const.I8Lit(value))
+            }
+            expect(RBrace())
 
-            case Some(TokI16Lit(value)) =>
-                if (!directNegation) {
-                    val max = BigInt(2).pow(15) - 1
-                    if (value > max) throw ParserError(s"16-bit integer literal '$value' exceeds its maximum allowed positive bound.")
-                }
-                Constant(Const.I16Lit(value))
+            if (BigInt(values.size) != arrType.size) {
+                throw ParserError(s"Array literal size mismatch: Type requires ${arrType.size} elements, but found ${values.size}.")
+            }
 
-            case Some(TokI32Lit(value)) =>
-                if (!directNegation) {
-                    val max = BigInt(2).pow(31) - 1
-                    if (value > max) throw ParserError(s"32-bit integer literal '$value' exceeds its maximum allowed positive bound.")
-                }
-                Constant(Const.I32Lit(value))
+            ArrayLit(values.toList, arrType)
 
-            case Some(TokI64Lit(value)) =>
-                if (!directNegation) {
-                    val max = BigInt(2).pow(63) - 1
-                    if (value > max) throw ParserError(s"64-bit integer literal '$value' exceeds its maximum allowed positive bound.")
-                }
-                Constant(Const.I64Lit(value))
-            case Some(KwIf()) => {
-                val cond = parseExpression(0)
-                expect(KwThen())
-                val thenStmt = parseExpression(0)
-                val elseBranch = tokenizer.peek() match {
-                    case Some(KwElse()) => {
-                        tokenizer.consume()
-                        Some(parseExpression(0))
+        } else
+            tokenizer.next() match {
+                case Some(LBrace()) => parseBlock()
+
+                case Some(TokTrue())  => TrueExpr()
+                case Some(TokFalse()) => FalseExpr()
+
+                case Some(TokU8Lit(value))  => Constant(Const.U8Lit(value))
+                case Some(TokU16Lit(value)) => Constant(Const.U16Lit(value))
+                case Some(TokU32Lit(value)) => Constant(Const.U32Lit(value))
+                case Some(TokU64Lit(value)) => Constant(Const.U64Lit(value))
+
+                case Some(TokF16Lit(value)) => Constant(Const.F16Lit(value))
+                case Some(TokF32Lit(value)) => Constant(Const.F32Lit(value))
+                case Some(TokF64Lit(value)) => Constant(Const.F64Lit(value))
+
+                case Some(TokI8Lit(value)) =>
+                    if (!directNegation) {
+                        val max = BigInt(2).pow(7) - 1
+                        if (value > max) throw ParserError(s"8-bit integer literal '$value' exceeds its maximum allowed positive bound.")
                     }
-                    case _ => {
-                        None
+                    Constant(Const.I8Lit(value))
+
+                case Some(TokI16Lit(value)) =>
+                    if (!directNegation) {
+                        val max = BigInt(2).pow(15) - 1
+                        if (value > max) throw ParserError(s"16-bit integer literal '$value' exceeds its maximum allowed positive bound.")
                     }
-                }
-                If(cond, thenStmt, elseBranch)
-            }
-            case Some(KwReturn()) => {
-                val rv = parseExpression(0)
-                Return(rv)
-            }
-            case Some(KwWhile()) => {
-                val cond = parseExpression(0)
-                expect(KwDo())
-                val body = parseExpression(0)
-                While(cond, body, "")
-            }
-            case Some(KwBreak()) =>
-                Break("")
+                    Constant(Const.I16Lit(value))
 
-            case Some(KwContinue()) =>
-                Continue("")
-            case Some(TokIdent(value)) => {
-                tokenizer.peek() match {
-                    case Some(LParen()) => {
-                        tokenizer.consume()
-                        val args = new ListBuffer[Expression]()
-                        if (tokenizer.peek() != Some(RParen())) {
-                            args += parseExpression(0)
+                case Some(TokI32Lit(value)) =>
+                    if (!directNegation) {
+                        val max = BigInt(2).pow(31) - 1
+                        if (value > max) throw ParserError(s"32-bit integer literal '$value' exceeds its maximum allowed positive bound.")
+                    }
+                    Constant(Const.I32Lit(value))
 
-                            while (tokenizer.peek() == Some(OpComma())) {
-                                tokenizer.consume()
-                                args += parseExpression(0)
-                            }
+                case Some(TokI64Lit(value)) =>
+                    if (!directNegation) {
+                        val max = BigInt(2).pow(63) - 1
+                        if (value > max) throw ParserError(s"64-bit integer literal '$value' exceeds its maximum allowed positive bound.")
+                    }
+                    Constant(Const.I64Lit(value))
+                case Some(KwIf()) => {
+                    val cond = parseExpression(0)
+                    expect(KwThen())
+                    val thenStmt = parseExpression(0)
+                    val elseBranch = tokenizer.peek() match {
+                        case Some(KwElse()) => {
+                            tokenizer.consume()
+                            Some(parseExpression(0))
                         }
+                        case _ => {
+                            None
+                        }
+                    }
+                    If(cond, thenStmt, elseBranch)
+                }
+                case Some(KwReturn()) => {
+                    val rv = parseExpression(0)
+                    Return(rv)
+                }
+                case Some(KwWhile()) => {
+                    val cond = parseExpression(0)
+                    expect(KwDo())
+                    val body = parseExpression(0)
+                    While(cond, body, "")
+                }
+                case Some(KwBreak()) =>
+                    Break("")
 
-                        expect(RParen())
-                        FunctionCall(value, args.toList)
-                    }
-                    case _ => {
-                        Var(value)
+                case Some(KwContinue()) =>
+                    Continue("")
+                case Some(TokIdent(value)) => {
+                    tokenizer.peek() match {
+                        case Some(LParen()) => {
+                            tokenizer.consume()
+                            val args = new ListBuffer[Expression]()
+                            if (tokenizer.peek() != Some(RParen())) {
+                                args += parseExpression(0)
+
+                                while (tokenizer.peek() == Some(OpComma())) {
+                                    tokenizer.consume()
+                                    args += parseExpression(0)
+                                }
+                            }
+
+                            expect(RParen())
+                            FunctionCall(value, args.toList)
+                        }
+                        case _ => {
+                            Var(value)
+                        }
                     }
                 }
-            }
-            case Some(OpTilde()) => Unary(UnaryOp.Complement, parseFactor())
-            case Some(OpMinus()) => {
-                val fac = parseFactor(true)
-                fac match {
-                    case Constant(Const.I8Lit(v))  => Constant(Const.I8Lit(-v))
-                    case Constant(Const.I16Lit(v)) => Constant(Const.I16Lit(-v))
-                    case Constant(Const.I32Lit(v)) => Constant(Const.I32Lit(-v))
-                    case Constant(Const.I64Lit(v)) => Constant(Const.I64Lit(-v))
-                    case _                         => Unary(UnaryOp.Negate, fac)
+                case Some(OpTilde()) => Unary(UnaryOp.Complement, parseFactor())
+                case Some(OpMinus()) => {
+                    val fac = parseFactor(true)
+                    fac match {
+                        case Constant(Const.I8Lit(v))  => Constant(Const.I8Lit(-v))
+                        case Constant(Const.I16Lit(v)) => Constant(Const.I16Lit(-v))
+                        case Constant(Const.I32Lit(v)) => Constant(Const.I32Lit(-v))
+                        case Constant(Const.I64Lit(v)) => Constant(Const.I64Lit(-v))
+                        case _                         => Unary(UnaryOp.Negate, fac)
+                    }
                 }
+                case Some(OpNot()) => Unary(UnaryOp.Not, parseFactor())
+                case Some(LParen()) => {
+                    val in = parseExpression(0)
+                    expect(RParen())
+                    in
+                }
+                case other => throw ParserError(s"Malformed Factor. Found unexpected token: $other")
             }
-            case Some(OpNot()) => Unary(UnaryOp.Not, parseFactor())
-            case Some(LParen()) => {
-                val in = parseExpression(0)
-                expect(RParen())
-                in
-            }
-            case other => throw ParserError(s"Malformed Factor. Found unexpected token: $other")
-        }
     }
 
     def isBinaryOperator(t: Token): Boolean = t match {
