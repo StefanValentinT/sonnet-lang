@@ -9,9 +9,7 @@ object Typed {
     case class Program(items: List[TopLevelItem])
 
     abstract sealed class TopLevelItem
-    case class Declaration(name: String, typ: Type)                                                                          extends TopLevelItem
-    case class FunctionDef(name: String, params: List[(String, Type)], returnType: Type, body: Expression, linkage: Linkage) extends TopLevelItem
-    case class GlobalVarDeclaration(name: String, init: Option[Expression], typ: Type, linkage: Linkage)                     extends TopLevelItem
+    case class Declaration(name: String, typ: Type, init: Option[Expression], linkage: Linkage) extends TopLevelItem
 
     abstract sealed class Statement
     case class VarDeclaration(name: String, typ: Type, init: Option[Expression]) extends Statement
@@ -20,6 +18,7 @@ object Typed {
     abstract sealed class Expression
     case class Constant(const: Const, typ: Type)                                                       extends Expression
     case class ArrayLit(values: List[Expression], typ: ArrayType)                                      extends Expression
+    case class Function(params: List[(String, Type)], returnType: Type, body: Expression)              extends TopLevelItem
     case class Var(name: String, typ: Type)                                                            extends Expression
     case class Ref(exp: Expression, typ: Type)                                                         extends Expression
     case class Deref(exp: Expression, typ: Type)                                                       extends Expression
@@ -59,6 +58,7 @@ def getTypedType(expr: Typed.Expression): Type =
         case Typed.TrueExpr()            => Bool()
         case Typed.FalseExpr()           => Bool()
     }
+
 
 val CheckedError = EpistemicError("This has been checked in variable resolution pass.")
 
@@ -151,6 +151,38 @@ object TypeChecker {
             }
         }
     }
+
+    private def infer(exp: Expression): Typed.Expression = 
+    	exp match {
+            case Constant(Const.I8Lit(value)) =>
+                Typed.Constant(Const.I8Lit(value), I8())
+            case Constant(Const.I16Lit(value)) =>
+                Typed.Constant(Const.I16Lit(value), I16())
+            case Constant(Const.I32Lit(value)) =>
+                Typed.Constant(Const.I32Lit(value), I32())
+            case Constant(Const.I64Lit(value)) =>
+                Typed.Constant(Const.I64Lit(value), I64())
+
+            case Constant(Const.F16Lit(value)) =>
+                Typed.Constant(Const.F16Lit(value), F16())
+            case Constant(Const.F32Lit(value)) =>
+                Typed.Constant(Const.F32Lit(value), F32())
+            case Constant(Const.F64Lit(value)) =>
+                Typed.Constant(Const.F64Lit(value), F64())
+
+            case Constant(Const.U8Lit(value)) =>
+                Typed.Constant(Const.U8Lit(value), U8())
+            case Constant(Const.U16Lit(value)) =>
+                Typed.Constant(Const.U16Lit(value), U16())
+            case Constant(Const.U32Lit(value)) =>
+                Typed.Constant(Const.U32Lit(value), U32())
+            case Constant(Const.U64Lit(value)) =>
+                Typed.Constant(Const.U64Lit(value), U64())
+
+            case TrueExpr()  => Typed.TrueExpr()
+            case FalseExpr() => Typed.FalseExpr()
+        }
+        
 
     private def typecheckExpression(exp: Expression): Typed.Expression = {
         exp match {
@@ -345,3 +377,4 @@ object TypeChecker {
             case _                       => false
         }
 }
+

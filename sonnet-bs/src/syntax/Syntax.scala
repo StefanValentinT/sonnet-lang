@@ -6,26 +6,28 @@ import tac.Tac
 case class Program(items: List[TopLevelItem])
 
 abstract sealed class TopLevelItem
-case class Import(path: String)                                                                              extends TopLevelItem
-case class Declaration(name: String, typ: Type)                                                              extends TopLevelItem
-case class FunctionDef(name: String, params: List[String], typ: FunType, body: Expression, linkage: Linkage) extends TopLevelItem
-case class GlobalVarDeclaration(name: String, typ: Type, init: Option[Expression], linkage: Linkage)         extends TopLevelItem
+case class Import(path: String)                                                                     extends TopLevelItem
+case class Declaration(name: String, typ: Option[Type], init: Option[Expression], linkage: Linkage) extends TopLevelItem
 
 enum Linkage {
     case Public, Private
 }
 
 abstract sealed class Statement
-case class VarDeclaration(name: String, typ: Type, init: Option[Expression]) extends Statement
-case class ExpressionStmt(exp: Expression)                                   extends Statement
+case class VarDeclaration(name: String, typ: Option[Type], init: Option[Expression]) extends Statement
+case class ExpressionStmt(exp: Expression)                                           extends Statement
+
+trait Formal
 
 abstract sealed class Expression
 case class Constant(const: Const)                                                       extends Expression
 case class ArrayLit(values: List[Expression], typ: ArrayType)                           extends Expression
-case class Var(name: String)                                                            extends Expression
+case class Function(params: List[Formal], retType: Option[Type], body: Expression)      extends Expression
+case class Var(name: String)                                                            extends Expression with Formal
 case class Ref(exp: Expression)                                                         extends Expression
 case class Deref(exp: Expression)                                                       extends Expression
 case class Unary(op: UnaryOp, exp: Expression)                                          extends Expression
+case class Typed(exp: Expression, typ: Type)                                            extends Expression with Formal
 case class Cast(exp: Expression, targetType: Type)                                      extends Expression
 case class Binary(op: BinaryOp, exp1: Expression, exp2: Expression)                     extends Expression
 case class Assignment(target: Expression, value: Expression)                            extends Expression
@@ -56,6 +58,9 @@ case class Bool()                                 extends Type
 case class ArrayType(elem: Type, size: BigInt)    extends Type
 case class Pointer(ref: Type)                     extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
+case class TypeVar(name: String) extends Type
+case class Inter(left: Type, right: Type) extends Type
+case class Quantified(over: String, typ: Type) extends Type
 
 enum Const {
     case I8Lit(value: BigInt)

@@ -41,6 +41,7 @@ object App {
                 val ast = Parser.fromString(fileContent).parse()
                 if (cfg.isVerbose) pprintln(ast)
 
+                /*
                 val importAst  = ImportResolver().resolve(ast, sourcePath.toString)
                 val fixedAst   = VariableResolver.resolveProgram(importAst)
                 val labeledAst = LoopLabeler.labelProgram(fixedAst)
@@ -63,6 +64,7 @@ object App {
                 if (cfg.isVerbose) println(qbeString)
 
                 FileWriter.writeFile(asmPath, qbeString)
+                 */
 
                 val finalExecPath = cfg.outputExecPath.getOrElse(sourceDir.resolve(baseName))
 

@@ -16,20 +16,13 @@ object LoopLabeler {
         Program(
           p.items.map(e =>
               e match {
-                  case d: Declaration          => d
-                  case f: FunctionDef          => labelFunctionDef(f)
-                  case v: GlobalVarDeclaration => labelGlobalVarDeclaration(v)
+                  case d: Declaration => {
+                      val labeledInit = d.init.map(e => labelExpression(e, None))
+                      Declaration(d.name, d.typ, labeledInit, d.linkage)
+                  }
               }
           )
         )
-    }
-
-    def labelFunctionDef(f: FunctionDef): FunctionDef = {
-        FunctionDef(f.name, f.params, f.typ, labelExpression(f.body, None), f.linkage)
-    }
-    def labelGlobalVarDeclaration(v: GlobalVarDeclaration): GlobalVarDeclaration = {
-        val labeledInit = v.init.map(e => labelExpression(e, None))
-        GlobalVarDeclaration(v.name, v.typ, labeledInit, v.linkage)
     }
 
     def labelStatement(stmt: Statement, currentLabel: Option[String]): Statement = {
@@ -71,6 +64,10 @@ object LoopLabeler {
                     case None        => throw EpistemicError("continue statement outside of loop")
                 }
             }
+
+            case Function(params, retType, body) =>
+                Function(params, retType, labelExpression(body, currentLabel))
+
             case ArrayLit(values, typ) =>
                 ArrayLit(values.map(e => labelExpression(e, currentLabel)), typ)
 

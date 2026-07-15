@@ -20,10 +20,8 @@ object VariableResolver {
 
     def resolveProgram(p: Program): Program = {
         val globalVariableMap = Map[String, MapEntry]()
-        val resolvedItems = p.items.map {
-            case d: Declaration          => resolveGlobalDeclaration(d, globalVariableMap)
-            case f: FunctionDef          => resolveFunctionDef(f, globalVariableMap)
-            case v: GlobalVarDeclaration => resolveGlobalVarDeclaration(v, globalVariableMap)
+        val resolvedItems = p.items.map { case d: Declaration =>
+            resolveGlobalDeclaration(d, globalVariableMap)
         }
         Program(resolvedItems)
     }
@@ -36,45 +34,8 @@ object VariableResolver {
             }
         }
         variableMap.put(decl.name, MapEntry(decl.name, true, true))
+        val resolvedInit = decl.init.map(e => resolveExpression(e, variableMap))
         decl
-    }
-
-    def resolveGlobalVarDeclaration(v: GlobalVarDeclaration, variableMap: Map[String, MapEntry]): GlobalVarDeclaration = {
-        if (variableMap.contains(v.name)) {
-            val prevEntry = variableMap(v.name)
-            if (prevEntry.fromCurrentBlock && !prevEntry.hasLinkage) {
-                throw EpistemicError(s"Duplicate declaration of global variable: ${v.name}")
-            }
-        }
-        variableMap.put(v.name, MapEntry(v.name, true, true))
-        val resolvedInit = v.init.map(e => resolveExpression(e, variableMap))
-
-        GlobalVarDeclaration(v.name, v.typ, resolvedInit, v.linkage)
-    }
-
-    def resolveFunctionDef(f: FunctionDef, variableMap: Map[String, MapEntry]): FunctionDef = {
-        if (variableMap.contains(f.name)) {
-            val prevEntry = variableMap(f.name)
-            if (prevEntry.fromCurrentBlock && !prevEntry.hasLinkage) {
-                throw EpistemicError(s"Duplicate declaration: ${f.name} conflicts with a local variable.")
-            }
-        }
-        variableMap.put(f.name, MapEntry(f.name, true, true))
-
-        val innerMap       = copyVariableMap(variableMap)
-        val resolvedParams = new ListBuffer[String]()
-
-        for (param <- f.params) {
-            if (innerMap.contains(param) && innerMap(param).fromCurrentBlock) {
-                throw EpistemicError(s"Duplicate parameter declaration: $param")
-            }
-            val uniqueParamName = makeUnique(param)
-            innerMap.put(param, MapEntry(uniqueParamName, true, false))
-            resolvedParams.append(uniqueParamName)
-        }
-
-        val resolvedBody = resolveExpression(f.body, innerMap)
-        FunctionDef(f.name, resolvedParams.toList, f.typ, resolvedBody, f.linkage)
     }
 
     def resolveStatement(stmt: Statement, variableMap: Map[String, MapEntry]): Statement = {
@@ -100,6 +61,37 @@ object VariableResolver {
                 val resolvedStmts = stmts.map(s => resolveStatement(s, innerMap))
                 val resolvedExp   = if exp.isDefined then Some(resolveExpression(exp.get, innerMap)) else None
                 Block(resolvedStmts, resolvedExp)
+            }
+            case Function(params, retType, body) => {
+                val globalOnlyMap = Map[String, MapEntry]()
+                variableMap.foreach { case (key, entry) =>
+                    if (entry.hasLinkage) {
+                        globalOnlyMap.put(key, entry.copy(fromCurrentBlock = false))
+                    }
+                }
+
+                val resolvedParams = new ListBuffer[Formal]()
+
+                for (param <- params) {
+                    val (paramName, paramTypeOpt) = param match {
+                        case Var(name)             => (name, None)
+                        case Typed(Var(name), typ) => (name, Some(typ))
+                        case other                 => throw EpistemicError(s"Invalid formals in function: $other")
+                    }
+                    if (globalOnlyMap.contains(paramName) && globalOnlyMap(paramName).fromCurrentBlock) {
+                        throw EpistemicError(s"Duplicate parameter declaration: $paramName")
+                    }
+                    val uniqueParamName = makeUnique(paramName)
+                    globalOnlyMap.put(paramName, MapEntry(uniqueParamName, true, false))
+                    val resolvedFormal = paramTypeOpt match {
+                        case Some(typ) => Typed(Var(uniqueParamName), typ)
+                        case None      => Var(uniqueParamName)
+                    }
+                    resolvedParams.append(resolvedFormal)
+                }
+
+                val resolvedBody = resolveExpression(body, globalOnlyMap)
+                Function(resolvedParams.toList, retType, resolvedBody)
             }
             case e @ Continue(_)        => e
             case e @ Break(_)           => e

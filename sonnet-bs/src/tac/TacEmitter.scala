@@ -128,7 +128,7 @@ class TacEmitter(prog: Typed.Program) {
             }
             PlainOperand(dest)
         }
-        
+
         case Typed.Constant(value, typ) =>
             PlainOperand(Tac.Constant(value))
         case Typed.Var(value, typ) =>
