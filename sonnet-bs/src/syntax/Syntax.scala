@@ -58,9 +58,9 @@ case class Bool()                                 extends Type
 case class ArrayType(elem: Type, size: BigInt)    extends Type
 case class Pointer(ref: Type)                     extends Type
 case class FunType(params: List[Type], ret: Type) extends Type
-case class TypeVar(name: String) extends Type
-case class Inter(left: Type, right: Type) extends Type
-case class Quantified(over: String, typ: Type) extends Type
+case class TypeVar(name: String)                  extends Type
+case class Inter(left: Type, right: Type)         extends Type
+case class Quantified(over: String, typ: Type)    extends Type
 
 enum Const {
     case I8Lit(value: BigInt)

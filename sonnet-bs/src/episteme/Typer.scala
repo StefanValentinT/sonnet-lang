@@ -59,7 +59,6 @@ def getTypedType(expr: Typed.Expression): Type =
         case Typed.FalseExpr()           => Bool()
     }
 
-
 val CheckedError = EpistemicError("This has been checked in variable resolution pass.")
 
 case class SymbolEntry(typ: Type, isDefined: Boolean)
@@ -69,32 +68,38 @@ object TypeChecker {
 
     def typecheckProgram(p: Program): Typed.Program = {
         symbols.clear()
-        val typedItems = p.items.map({ (item) =>
+
+        p.items.foreach {
+            case Declaration(name, Some(t), _, _) => symbols.put(name, t)
+            case Declaration(name, None, Some(init), _) =>
+                symbols.put(name, getTypedType(infer(init)))
+            case syntax.Declaration(name, None, None, _) =>
+                throw EpistemicError(s"Global declaration '$name' needs a type or initializer.")
+            case _ => ()
+        }
+
+        val typedItems = p.items.flatMap { item =>
             item match {
-                case d: Declaration          => typecheckGlobalDeclaration(d)
-                case f: FunctionDef          => typecheckFunctionDef(f)
-                case v: GlobalVarDeclaration => typecheckGlobalVarDeclaration(v)
+                case d: syntax.Declaration => Some(typecheckDeclaration(d))
+                case syntax.Import(_)      => None
             }
-        })
+        }
         Typed.Program(typedItems)
     }
 
-    private def typecheckGlobalDeclaration(decl: Declaration): Typed.Declaration = {
-        symbols.put(decl.name, decl.typ)
-        Typed.Declaration(decl.name, decl.typ)
-    }
+    private def typecheckDeclaration(v: Declaration): Typed.Declaration = {
+        val resolvedType = v.typ match {
+            case Some(t) => t
+            case None =>
+                v.init match {
+                    case Some(initExpr) => getTypedType(infer(initExpr))
+                    case None           => throw EpistemicError(s"Declaration of '${v.name}' needs either an explicit type or an initializer.")
+                }
+        }
 
-    private def typecheckGlobalVarDeclaration(v: GlobalVarDeclaration): Typed.GlobalVarDeclaration = {
-        symbols.put(v.name, v.typ)
-        val typedInit = v.init.map({ (e) =>
-            val typedExpr = typecheckExpression(e)
-            val itsType   = getTypedType(typedExpr)
-            if (itsType != v.typ) {
-                throw EpistemicError(s"Global variable '${v.name}' type mismatch. Expected ${v.typ}, but got ${itsType}.")
-            }
-            typedExpr
-        })
-        Typed.GlobalVarDeclaration(v.name, typedInit, v.typ, v.linkage)
+        symbols.put(v.name, resolvedType)
+        val typedInit = v.init.map { e => check(e, resolvedType) }
+        Typed.Declaration(v.name, resolvedType, typedInit, v.linkage)
     }
 
     private def typecheckFunctionDef(f: FunctionDef): Typed.FunctionDef = {
@@ -104,7 +109,6 @@ object TypeChecker {
         }
 
         symbols.get(f.name) match {
-            // Has been declared previously
             case Some(FunType(declParams, declRet)) =>
                 if (declParams != paramTypes || declRet != returnType) {
                     throw EpistemicError(s"Function ${f.name} signature redefinition mismatch. Declared as ${FunType(declParams, declRet)}, defined as ${FunType(paramTypes, returnType)}.")
@@ -132,59 +136,27 @@ object TypeChecker {
 
         Typed.FunctionDef(f.name, typedParams, returnType, typedBody, f.linkage)
     }
-
-    private def typecheckStatement(stmt: Statement): Typed.Statement = {
+    
+    private def typecheckStatement(stmt: syntax.Statement): Typed.Statement =
         stmt match {
-            case ExpressionStmt(exp) =>
-                Typed.ExpressionStmt(typecheckExpression(exp))
-            case VarDeclaration(name, typ, init) => {
-                symbols.put(name, typ)
-                val typedInit = init.map((e) => {
-                    val typedExpr = typecheckExpression(e)
-                    val itsType   = getTypedType(typedExpr)
-                    if (itsType != typ) {
-                        throw EpistemicError(s"Local variable '$name' type mismatch. Expected $typ, got ${itsType}")
-                    }
-                    typedExpr
-                })
-                Typed.VarDeclaration(name, typ, typedInit)
+            case syntax.ExpressionStmt(exp) =>
+                Typed.ExpressionStmt(infer(exp))
+            case syntax.VarDeclaration(name, typOpt, init) => {
+                val resolvedType = typOpt match {
+                    case Some(t) => t
+                    case None =>
+                        init match {
+                            case Some(i) => getTypedType(infer(i))
+                            case None    => throw EpistemicError(s"Local variable '$name' needs a type or initializer.")
+                        }
+                }
+                symbols.put(name, resolvedType)
+                val typedInit = init.map { e => check(e, resolvedType) }
+                Typed.VarDeclaration(name, resolvedType, typedInit)
             }
         }
-    }
 
-    private def infer(exp: Expression): Typed.Expression = 
-    	exp match {
-            case Constant(Const.I8Lit(value)) =>
-                Typed.Constant(Const.I8Lit(value), I8())
-            case Constant(Const.I16Lit(value)) =>
-                Typed.Constant(Const.I16Lit(value), I16())
-            case Constant(Const.I32Lit(value)) =>
-                Typed.Constant(Const.I32Lit(value), I32())
-            case Constant(Const.I64Lit(value)) =>
-                Typed.Constant(Const.I64Lit(value), I64())
-
-            case Constant(Const.F16Lit(value)) =>
-                Typed.Constant(Const.F16Lit(value), F16())
-            case Constant(Const.F32Lit(value)) =>
-                Typed.Constant(Const.F32Lit(value), F32())
-            case Constant(Const.F64Lit(value)) =>
-                Typed.Constant(Const.F64Lit(value), F64())
-
-            case Constant(Const.U8Lit(value)) =>
-                Typed.Constant(Const.U8Lit(value), U8())
-            case Constant(Const.U16Lit(value)) =>
-                Typed.Constant(Const.U16Lit(value), U16())
-            case Constant(Const.U32Lit(value)) =>
-                Typed.Constant(Const.U32Lit(value), U32())
-            case Constant(Const.U64Lit(value)) =>
-                Typed.Constant(Const.U64Lit(value), U64())
-
-            case TrueExpr()  => Typed.TrueExpr()
-            case FalseExpr() => Typed.FalseExpr()
-        }
-        
-
-    private def typecheckExpression(exp: Expression): Typed.Expression = {
+    private def infer(exp: Expression): Typed.Expression =
         exp match {
             case Constant(Const.I8Lit(value)) =>
                 Typed.Constant(Const.I8Lit(value), I8())
@@ -214,13 +186,12 @@ object TypeChecker {
             case TrueExpr()  => Typed.TrueExpr()
             case FalseExpr() => Typed.FalseExpr()
 
-            case ArrayLit(values, typ) => Typed.ArrayLit(values.map(typecheckExpression), typ)
+            case Cast(exp, targetType) => Typed.Cast(infer(exp), targetType)
 
             case Var(name) =>
                 symbols.get(name) match {
-                    case Some(FunType(_, _)) => throw CheckedError
-                    case Some(t)             => Typed.Var(name, t)
-                    case None                => throw CheckedError
+                    case Some(t) => Typed.Var(name, t)
+                    case None    => throw CheckedError
                 }
             case FunctionCall(target, args) =>
                 symbols.get(target) match {
@@ -229,13 +200,9 @@ object TypeChecker {
                             throw EpistemicError(s"Function $target expected ${paramTypes.length} arguments, got ${args.length}.")
                         }
                         val typedArgs = args.map(typecheckExpression)
-                        typedArgs
-                            .zip(paramTypes)
-                            .foreach({ case (arg, expectedType) =>
-                                if (getTypedType(arg) != expectedType) {
-                                    throw EpistemicError(s"Argument type mismatch for function $target. Expected $expectedType, got ${getTypedType(arg)}.")
-                                }
-                            })
+                        val typedArgs = args.zip(paramTypes).map { case (arg, expectedType) =>
+                            check(arg, expectedType)
+                        }
                         Typed.FunctionCall(target, typedArgs, retType)
                     }
                     case _ => throw EpistemicError(s"Identifier '$target' is not a callable function.")
@@ -246,30 +213,24 @@ object TypeChecker {
                     case _                 => throw EpistemicError("Invalid l-value: Target of assignment must be a variable or a dereferenced pointer.")
                 }
 
-                val typedTarget = typecheckExpression(target)
-                val typedValue  = typecheckExpression(value)
-
-                val targetType = getTypedType(typedTarget)
-                val valueType  = getTypedType(typedValue)
-
-                if (targetType != valueType) {
-                    throw EpistemicError(s"Type mismatch inside assignment operation. Cannot assign $valueType to $targetType.")
-                }
+                val typedTarget = infer(target)
+                val targetType  = getTypedType(typedTarget)
+                val typedValue  = check(value, targetType)
 
                 Typed.Assignment(typedTarget, typedValue, targetType)
             }
             case Unary(op, e) => {
-                val typedExpr = typecheckExpression(e)
+                val typedExpr = infer(e)
                 val t         = getTypedType(typedExpr)
                 op match {
-                    case UnaryOp.Complement | UnaryOp.Negate => if !(isIntegerType(t)) then throw EpistemicError(s"Complement requires integer types, found: $t.")
+                    case UnaryOp.Complement | UnaryOp.Negate => if !(isIntegerType(t)) then throw EpistemicError(s"Complement requires integer type, found: $t.")
                     case UnaryOp.Not                         => if t != Bool() then throw EpistemicError(s"Logical not requires bool type, found: $t.")
                 }
                 Typed.Unary(op, typedExpr, t)
             }
             case Binary(op, exp1, exp2) => {
-                val typedE1 = typecheckExpression(exp1)
-                val typedE2 = typecheckExpression(exp2)
+                val typedE1 = infer(exp1)
+                val typedE2 = infer(exp2)
                 val t1      = getTypedType(typedE1)
                 val t2      = getTypedType(typedE2)
                 if (t1 != t2) {
@@ -304,31 +265,24 @@ object TypeChecker {
                     }
                 }
             }
-            case Cast(exp, targetType) => Typed.Cast(typecheckExpression(exp), targetType)
             case If(cond, thenBranch, elseBranch) => {
-                val typedCond = typecheckExpression(cond)
-                val typedThen = typecheckExpression(thenBranch)
-                val typedElse = elseBranch.map({ (e) => typecheckExpression(e) })
-                if (getTypedType(typedCond) != Bool()) {
-                    throw EpistemicError("If condition statement must evaluate to a Boolean.")
-                }
-                typedElse match {
-                    case Some(e) if getTypedType(typedThen) != getTypedType(e) =>
-                        throw EpistemicError("Then and Else branches must yield the same type.")
-                    case _ => ()
-                }
-                Typed.If(typedCond, typedThen, typedElse, getTypedType(typedThen))
+                val typedCond = check(cond, Bool())
+                val typedThen = infer(thenBranch)
+                val thenType  = getTypedType(typedThen)
+                val typedElse = elseBranch.map(e => check(e, thenType))
+
+                Typed.If(typedCond, typedThen, typedElse, thenType)
             }
             case While(cond, body, label) => {
-                val typedCond = typecheckExpression(cond)
-                val typedBody = typecheckExpression(body)
+                val typedCond = check(cond, Bool())
+                val typedBody = infer(body)
                 Typed.While(typedCond, typedBody, label, I32())
             }
             case Block(statements, blockExp) => {
-                val typedStmts = statements.map({ (s) => typecheckStatement(s) })
+                val typedStmts = statements.map(typecheckStatement)
                 val (typedBlockExp, blockType) = blockExp match {
                     case Some(e) => {
-                        val typedE = typecheckExpression(e)
+                        val typedE = infer(e)
                         (Some(typedE), getTypedType(typedE))
                     }
                     case None => (None, I32())
@@ -336,11 +290,11 @@ object TypeChecker {
                 Typed.Block(typedStmts, typedBlockExp, blockType)
             }
             case Return(e) => {
-                val typedExpr = typecheckExpression(e)
+                val typedExpr = infer(e)
                 Typed.Return(typedExpr, getTypedType(typedExpr))
             }
             case Ref(e) => {
-                typecheckExpression(e) match {
+                infer(e) match {
                     case v @ Typed.Var(_, ArrayType(elem, _)) =>
                         Typed.Ref(v, Pointer(elem))
                     case v @ Typed.Var(_, _) =>
@@ -350,7 +304,7 @@ object TypeChecker {
                 }
             }
             case Deref(e) => {
-                val typedExpr = typecheckExpression(e)
+                val typedExpr = infer(e)
                 getTypedType(typedExpr) match {
                     case Pointer(innerType) =>
                         Typed.Deref(typedExpr, innerType)
@@ -364,6 +318,10 @@ object TypeChecker {
             case Continue(label) =>
                 Typed.Continue(label, I32())
         }
+
+    private def check(exp: Expression, t: Type): Typed.Expression = {
+        val at = infer(exp)
+        if getTypedType(at) == t then at else throw EpistemicError(s"Expression does not have expected type $t")
     }
 
     private def isComparisonOp(op: BinaryOp): Boolean =
@@ -377,4 +335,3 @@ object TypeChecker {
             case _                       => false
         }
 }
-

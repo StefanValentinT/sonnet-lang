@@ -93,7 +93,7 @@ class Parser(tokenizer: Tokenizer) {
                 None
         }
         val init = tokenizer.peek() match {
-            case Some(OpDoubleColon()) => {
+            case Some(OpAssign()) => {
                 tokenizer.consume()
                 val init = parseExpression(0)
                 Some(init)
