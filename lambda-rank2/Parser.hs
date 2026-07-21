@@ -15,7 +15,6 @@ parseAtom s = case trim s of
   ('λ':cs)  -> parseAbs cs
   cs | take 6 (map toLower cs) == "lambda" -> parseAbs (drop 6 cs)
   cs | take 3 (map toLower cs) == "rec"    -> parseRec (drop 3 cs)
-  cs | take 3 (map toLower cs) == "let"    -> parseLet (drop 3 cs)
   ('(':cs)  -> case parseExpr cs of
     Left err -> Left err
     Right (term, remainder) -> case trim remainder of
@@ -50,22 +49,6 @@ parseRec s =
          Right (body, remainder) -> Right (Rec var body, remainder)
        _ -> Left "Expected '.' after rec variable"
 
-parseLet :: String -> Either String (Term, String)
-parseLet s =
-  let s1 = trim s
-      (var, s2) = span isIdChar s1
-  in if null var
-     then Left "Expected variable name after 'let'"
-     else case trim s2 of
-       ('=':s3) -> case parseExpr s3 of
-         Left err -> Left err
-         Right (val, s4) -> case trim s4 of
-           ('i':'n':s5) -> case parseExpr s5 of
-             Left err -> Left err
-             Right (body, remainder) -> Right (Let var val body, remainder)
-           _ -> Left "Expected 'in' after let binding value"
-       _ -> Left "Expected '=' after let variable"
-
 parseExpr :: String -> Either String (Term, String)
 parseExpr s = case parseAtom s of
   Left err -> Left err
@@ -73,7 +56,7 @@ parseExpr s = case parseAtom s of
   where
     go acc r =
       let r' = trim r in
-      if null r' || head r' == ')' || take 2 (map toLower r') == "in"
+      if null r' || head r' == ')'
       then Right (acc, r')
       else case parseAtom r' of
         Left _ -> Right (acc, r') 

@@ -7,7 +7,6 @@ data Term
   | App Term Term
   | Abs String Term
   | Rec String Term
-  | Let String Term Term
   deriving (Eq, Show)
 
 data Type
@@ -30,3 +29,19 @@ instance Show Type where
   show TInt           = "Int"
   show TBool          = "Bool"
   show (TRef t)       = "*" ++ show t
+
+
+infixr 3 /\
+(/\) :: Type -> Type -> Type
+TAnd ts /\ TAnd us = TAnd (ts ++ us)
+TAnd ts /\ t       = TAnd (ts ++ [t])
+t       /\ TAnd us = TAnd (t : us)
+t1      /\ t2      = TAnd [t1, t2]
+
+infixl 9 $$
+($$) :: Term -> Term -> Term
+($$) = App
+
+infixr 0 -->
+(-->) :: Type -> Type -> Type
+(-->) = TArr

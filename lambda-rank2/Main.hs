@@ -1,41 +1,64 @@
 module Main where
-
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, stdout, stdin, stderr, hSetEncoding, utf8)
 import Data.Char (isSpace)
-import Data.List (intercalate)
+import Data.List (isPrefixOf)
 import qualified Data.Map as M
 
 import Syntax
-import Parser (parseTerm)
-import Typer (Constraint, Env, initialEnv, infer)
+import Parser
+import Typer
 
 main :: IO ()
-main = repl
+main = do
+  hSetEncoding stdin  utf8
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
+  repl initialEnv
 
-repl :: IO ()
-repl = do
+trim :: String -> String
+trim = f . f
+  where f = reverse . dropWhile isSpace
+
+repl :: Env -> IO ()
+repl env = do
   putStr ">>> "
   hFlush stdout
   input <- getLine
-  if input `elem` [":q", ":quit"]
+  let trimmed = trim input
+
+  if trimmed `elem` [":q", ":quit"]
     then putStrLn "Goodbye!"
-    else if all isSpace input
-      then repl
+    else if null trimmed
+      then repl env
       else do
-        case parseTerm input of
-          Left err -> putStrLn $ "  [Parse Error]: " ++ err
-          Right ast -> do
-            case infer ast of
-              Left err -> putStrLn $ "  [Type Error]:  " ++ err
-              Right (env, ty, residualCs) -> do
-                let reqEnv = M.difference env initialEnv
-                putStrLn $ "  [Inferred Type]:     " ++ show ty
-                putStrLn $ "  [Constraints Held]:  " ++ showConstraints residualCs
-                putStrLn $ "  [Context Required]:  " ++ showEnv reqEnv
-        repl
+        env' <- handleAssign env trimmed
+        repl env'
 
-showConstraints :: [Constraint] -> String
-showConstraints cs = "{" ++ intercalate ", " (map show cs) ++ "}"
+handleAssign :: Env -> String -> IO Env
+handleAssign env input
+  | "=" `isInfixOf` input && not (":" `isPrefixOf` input) = do
+      let (varPart, rest) = break (== '=') input
+          varName         = trim varPart
+          termStr         = trim (drop 1 rest)
 
-showEnv :: Env -> String
-showEnv env = "{" ++ intercalate ", " [ x ++ " : " ++ show t | (x, t) <- M.toList env ] ++ "}"
+      if null varName
+        then putStrLn "  [Error]: Missing variable name before '='" >> return env
+        else case parseTerm termStr of
+          Left err -> putStrLn ("  [Parse Error]: " ++ err) >> return env
+          Right ast -> case pp env ast of
+            Left err -> putStrLn ("  [Type Error]: " ++ err) >> return env
+            Right (reqEnv, ty) -> do
+              let combinedEnv = addEnv env reqEnv
+              let newEnv      = M.insert varName ty combinedEnv
+              putStrLn $ "  " ++ varName ++ " : " ++ show ty
+              return newEnv
+
+  | otherwise = do
+      putStrLn "  [Error]: Input must be in the format 'name = term'"
+      return env
+
+isInfixOf :: String -> String -> Bool
+isInfixOf needle haystack = any (needle `isPrefixOf`) (tails haystack)
+  where
+    tails [] = [[]]
+    tails xs@(_:xs') = xs : tails xs'
