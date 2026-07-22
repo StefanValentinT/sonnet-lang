@@ -1,6 +1,7 @@
 module Parser (parseTerm) where
 
 import Data.Char (isAlphaNum, isSpace, toLower)
+import Data.List (isPrefixOf)
 import Syntax (Term(..))
 
 trim :: String -> String
@@ -56,7 +57,7 @@ parseExpr s = case parseAtom s of
   where
     go acc r =
       let r' = trim r in
-      if null r' || head r' == ')'
+      if null r' || ")" `isPrefixOf` r'
       then Right (acc, r')
       else case parseAtom r' of
         Left _ -> Right (acc, r') 

@@ -1,5 +1,6 @@
 module Main where
 import System.IO (hFlush, stdout, stdin, stderr, hSetEncoding, utf8)
+import Data.List (intercalate)
 import Data.Char (isSpace)
 import Data.List (isPrefixOf)
 import qualified Data.Map as M
@@ -45,12 +46,13 @@ handleAssign env input
         then putStrLn "  [Error]: Missing variable name before '='" >> return env
         else case parseTerm termStr of
           Left err -> putStrLn ("  [Parse Error]: " ++ err) >> return env
-          Right ast -> case pp env ast of
+          Right ast -> case inferTopLevel env ast of
             Left err -> putStrLn ("  [Type Error]: " ++ err) >> return env
-            Right (reqEnv, ty) -> do
-              let combinedEnv = addEnv env reqEnv
-              let newEnv      = M.insert varName ty combinedEnv
-              putStrLn $ "  " ++ varName ++ " : " ++ show ty
+            Right (combinedEnv, genTy) -> do
+              let newEnv = M.insert varName genTy combinedEnv
+              putStrLn $ varName ++ " : " ++ show genTy
+              putStrLn "where"
+              putStrLn $ showEnv newEnv
               return newEnv
 
   | otherwise = do
@@ -62,3 +64,6 @@ isInfixOf needle haystack = any (needle `isPrefixOf`) (tails haystack)
   where
     tails [] = [[]]
     tails xs@(_:xs') = xs : tails xs'
+
+showEnv :: Env -> String
+showEnv env = "{\n    " ++ intercalate ",\n    " [ x ++ " : " ++ show t | (x, t) <- M.toList env ] ++ "\n}"

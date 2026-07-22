@@ -3,11 +3,7 @@ module Typer
   , Env
   , Subst
   , initialEnv
-  , pp
-  , subtype1
-  , subtype2
-  , subtypeForall2
-  , mgs
+  , inferTopLevel
   , addEnv
   ) where
 
@@ -44,6 +40,7 @@ initialEnv = M.fromList
   , ("true",  TBool)
   , ("false", TBool)
   , ("0",     TInt)
+  , ("add",   (TInt --> TInt --> TInt) /\(TBool --> TBool --> TBool) )
   ]
 
 ftvType :: Type -> S.Set String
@@ -56,17 +53,6 @@ ftvType _               = S.empty
 
 ftvEnv :: Env -> S.Set String
 ftvEnv env = S.unions (map ftvType (M.elems env))
-
-allVars :: Type -> S.Set String
-allVars (TVar x)        = S.singleton x
-allVars (TArr t1 t2)    = S.union (allVars t1) (allVars t2)
-allVars (TAnd ts)       = S.unions (map allVars ts)
-allVars (TForall xs t)  = S.union (S.fromList xs) (allVars t)
-allVars (TRef t)        = allVars t
-allVars _               = S.empty
-
-allVarsEnv :: Env -> S.Set String
-allVarsEnv env = S.unions (map allVars (M.elems env))
 
 freshIn :: S.Set String -> String
 freshIn used = case [ name | i <- [(0::Int)..], let name = "t" ++ show i, not (name `S.member` used) ] of
@@ -113,18 +99,18 @@ gen env t =
       genVars = S.toList (S.difference tFtv envFtv)
   in makeForall genVars t
 
-instantiateForall :: S.Set String -> Type -> (S.Set String, Type)
+instantiateForall :: S.Set String -> Type -> Type
 instantiateForall used (TForall xs t) =
-  let (subst, used') = foldl (\(m, u) x ->
+  let (subst, _) = foldl (\(m, u) x ->
         let fresh = freshIn u
         in (M.insert x (TVar fresh) m, S.insert fresh u)
         ) (M.empty, used) xs
-  in (used', applySubst subst t)
-instantiateForall used t = (used, t)
+  in applySubst subst t
+instantiateForall _ t = t
 
 freshenPair :: S.Set String -> (Env, Type) -> (Env, Type)
 freshenPair used (env, t) =
-  let varsToRename = S.toList (S.union (allVarsEnv env) (allVars t))
+  let varsToRename = S.toList (S.union (ftvEnv env) (ftvType t))
       (subst, _) = foldl (\(m, u) v ->
         let fresh = freshIn u
         in (M.insert v (TVar fresh) m, S.insert fresh u)
@@ -133,11 +119,20 @@ freshenPair used (env, t) =
 
 subtypeSatisfaction :: S.Set String -> Type -> Type -> UnificationProblem
 
-subtypeSatisfaction used s (TAnd ts) =
+subtypeSatisfaction _used s (TAnd ts) =
   UnificationProblem
     { freshVars   = []
     , constraints = [CSub s t | t <- ts]
     }
+
+subtypeSatisfaction used (TAnd ts) tau =
+  let candidates = [ subtypeSatisfaction used t tau | t <- ts ]
+  in case [ p | p <- candidates, isRight (mgs (constraints p)) ] of
+        (firstValid : _) -> firstValid
+        []               -> UnificationProblem [] [CEqual (TAnd ts) tau]
+  where
+    isRight (Right _) = True
+    isRight _         = False
 
 subtypeSatisfaction used (TForall xs s) tau =
   let (subst, freshVs, _) = foldl (\(m, fVs, u) x ->
@@ -170,19 +165,13 @@ subtypeSatisfaction used (TVar tv) (TArr s1 s2) =
       , constraints = [CEqual (TVar tv) (TArr t1 t2), CSub t1 s1, CSub t2 s2]
       }
 
-subtypeSatisfaction used (TArr s1 s2) (TArr t1 t2) =
+subtypeSatisfaction _used (TArr s1 s2) (TArr t1 t2) =
   UnificationProblem 
     { freshVars   = []
     , constraints = [CSub t1 s1, CSub s2 t2]
     }
 
-subtypeSatisfaction used (TVar tv) tau =
-  UnificationProblem 
-    { freshVars   = []
-    , constraints = [CEqual (TVar tv) tau]
-    }
-
-subtypeSatisfaction used s t =
+subtypeSatisfaction _used s t =
   UnificationProblem 
     { freshVars   = []
     , constraints = [CEqual s t]
@@ -223,93 +212,56 @@ unify (CSub _ _ : _) =
 
 mgs :: [Constraint] -> Either String Subst
 mgs cs = 
-  let extractVars (CSub a b) = allVars a `S.union` allVars b
-      extractVars (CEqual a b) = allVars a `S.union` allVars b
+  let extractVars (CSub a b) = ftvType a `S.union` ftvType b
+      extractVars (CEqual a b) = ftvType a `S.union` ftvType b
       initialUsed = S.unions (map extractVars cs)
   in unify (reduceToEqualities initialUsed cs)
-
-subtype1 :: Type -> Type -> Bool
-subtype1 t1 t2 = all (`elem` flattenAnd t1) (flattenAnd t2)
-
-subtype2 :: Type -> Type -> Bool
-subtype2 (TArr s1 t1) (TArr s2 t2) = (subtype1 s2 s1) && (subtype2 t1 t2)
-subtype2 t1 t2                     = subtype1 t1 t2
-
-subtypeForall2 :: Type -> Type -> Bool
-subtypeForall2 t1 t2 = case mgs [CSub t1 t2] of
-  Right s -> M.null s
-  Left _  -> False
 
 pp :: Env -> Term -> Either String (Env, Type)
 pp env (Var x) = case M.lookup x env of
   Just ty -> 
-    let (used', instTy) = instantiateForall (allVars ty) ty
+    let instTy = instantiateForall (ftvType ty) ty
     in Right (M.empty, instTy)
   Nothing -> 
     let t = TVar ("t_" ++ x)
     in Right (M.singleton x t, t)
 
 pp env (Abs x n) = case pp env n of
-    Left err     -> Left err
-    Right (a, s) -> 
-        let usedVars = S.union (allVarsEnv a) (allVars s)
-            (_, sUnquantified) = instantiateForall usedVars s
-        in if not (M.member x a)
-        then 
-            let tName = freshIn usedVars
-                t     = TVar tName
-            in Right (a, gen a (TArr t sUnquantified))
-        else 
-            case M.lookup x a of
-                Just tyX -> 
-                    let aPrime = M.delete x a
-                    in Right (aPrime, gen aPrime (TArr tyX sUnquantified))
-                Nothing -> Left "Error: Variable in domain but not found"
+  Left err -> Left err
+  Right (a, s) ->
+    case M.lookup x a of
+      Just tyX ->
+        let aPrime = M.delete x a
+        in Right (aPrime, gen aPrime (TArr tyX s))
+      Nothing ->
+        let used  = S.union (ftvEnv a) (ftvType s)
+            tName = freshIn used
+            t     = TVar tName
+        in Right (a, gen a (TArr t s))
 
 pp env (App m1 m2) = case (pp env m1, pp env m2) of
   (Left err, _) -> Left err
   (_, Left err) -> Left err
-  (Right (a1, t1), Right pair2) ->
+  (Right (a1, s1), Right pair2) ->
     let
-      usedVars1           = S.union (allVarsEnv a1) (allVars t1)
-      (a2, t2)            = freshenPair usedVars1 pair2
-      usedVarsAll         = S.unions [usedVars1, allVarsEnv a2, allVars t2]
-      (usedVars', t1Inst) = instantiateForall usedVarsAll t1
-    in
-      case t1Inst of
-        TVar tv ->
-          let t1Name  = freshIn usedVars'
-              t2Name  = freshIn (S.insert t1Name usedVars')
-              freshT1 = TVar t1Name
-              freshT2 = TVar t2Name
-              cs      = [ CSub t2 freshT1
-                        , CEqual (TVar tv) (TArr freshT1 freshT2)
-                        ]
-          in case mgs cs of
-            Left err -> Left $ "App rule (i) satisfaction failed: " ++ err
-            Right u  ->
-              let mergedEnv = applyEnv u (addEnv a1 a2)
-                  resType   = gen mergedEnv (applySubst u freshT2)
-              in Right (mergedEnv, resType)
-
-        TArr tau1 tau2 ->
-          let cs = [ CSub t2 tau1 ]
-          in case mgs cs of
-            Left err -> Left $ "App rule (ii) satisfaction failed: " ++ err
-            Right u  ->
-              let mergedEnv = applyEnv u (addEnv a1 a2)
-                  resType   = gen mergedEnv (applySubst u tau2)
-              in Right (mergedEnv, resType)
-
-        _ -> Left $ "Type error: Cannot apply non-function type " ++ show t1
+      usedVars1   = S.union (ftvEnv a1) (ftvType s1)
+      (a2, s2)    = freshenPair usedVars1 pair2
+      usedVarsAll = S.unions [usedVars1, ftvEnv a2, ftvType s2]
+      alphaName   = freshIn usedVarsAll
+      alpha       = TVar alphaName
+      cs          = [ CSub s1 (TArr s2 alpha) ]
+    in case mgs cs of
+      Left err -> Left $ "App satisfaction failed: " ++ err
+      Right u  ->
+        let mergedEnv = applyEnv u (addEnv a1 a2)
+            resType   = applySubst u alpha
+        in Right (mergedEnv, resType)
 
 pp env (Rec x n) = case pp env n of
   Left err -> Left err
   Right (a, s) ->
-    if not (M.member x a)
-    then Right (a, s)
-    else case M.lookup x a of
-      Nothing -> Left "Error: Variable in domain but not found"
+    case M.lookup x a of
+      Nothing -> Right (a, gen a s)
       Just tyX ->
         let aPrime   = M.delete x a
             sigma    = gen aPrime s
@@ -317,9 +269,11 @@ pp env (Rec x n) = case pp env n of
         in case mgs cs of
           Left err -> Left $ "Rec satisfaction failed: " ++ err
           Right u  ->
-            let mergedEnv      = applyEnv u aPrime
-                uSigma         = applySubst u sigma
-                usedVars       = S.union (allVarsEnv mergedEnv) (allVars uSigma)
-                (_, resTau)    = instantiateForall usedVars uSigma
-                resType        = gen mergedEnv resTau
+            let mergedEnv = applyEnv u aPrime
+                resType   = gen mergedEnv (applySubst u s)
             in Right (mergedEnv, resType)
+
+inferTopLevel :: Env -> Term -> Either String (Env, Type)
+inferTopLevel env ast = do
+  (reqEnv, ty) <- pp env ast
+  pure (addEnv env reqEnv, gen env ty)
