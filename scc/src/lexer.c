@@ -323,7 +323,7 @@ TokenKind classifyIdent(void)
 		switch (lexer.start[1])
 		{
 		case 'h':
-			return checkKeyword("then", 4, TOK_TYPE);
+			return checkKeyword("then", 4, TOK_THEN);
 		case 'y':
 			return checkKeyword("type", 4, TOK_TYPE);
 		}

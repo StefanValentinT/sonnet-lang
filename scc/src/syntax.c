@@ -38,6 +38,7 @@ typedef struct
 } string;
 
 identifier newIdent(void);
+u64 getMaxId(void);
 identifier makeIdent(const char* content, size length);
 bool isEqualIdent(const identifier* id1, const identifier* id2);
 u64 toAutoID(const identifier* id);
@@ -48,6 +49,8 @@ void printIdent(identifier ident);
 
 typedef enum
 {
+	TYPE_VAR,
+	
 	I8,
 	I16,
 	I32,
@@ -58,6 +61,9 @@ typedef enum
 	U64,
 	F32,
 	F64,
+	BOOL,
+
+	POINTER_TYPE,
 	ARRAY_TYPE,
 	FUN_TYPE,
 	STRUCT_TYPE,
@@ -70,6 +76,11 @@ typedef struct
 	Type* elemType;
 	size* elemCount; // nullable
 } ArrayTypeData;
+
+typedef struct
+{
+	Type* pointee;
+} PointerTypeData;
 
 typedef struct
 {
@@ -96,6 +107,10 @@ struct Type
 	TypeKind kind;
 	union
 	{
+		size typeVar;
+
+		PointerTypeData pointer;
+		
 		ArrayTypeData arr;
 		FunTypeData fun;
 		StructTypeData structure;
@@ -107,6 +122,7 @@ struct Type
 typedef enum
 {
 	CONSTANT,
+	BOOLEAN,
 	ARRAY,
 	STRUCTURE,
 	STRING,
@@ -187,6 +203,10 @@ typedef struct
 	} data;
 	Type numericType;
 } ConstantData;
+
+typedef struct{
+	bool boolVal;
+} BooleanData;
 
 typedef struct
 {
@@ -280,8 +300,8 @@ typedef struct
 typedef struct
 {
 	Term* cond;
-	Term* ifBranch;
-	Term* thenBranch; // nullable
+	Term* thenBranch;
+	Term* elseBranch; // nullable
 } ConditionalData;
 
 typedef struct
@@ -294,7 +314,7 @@ typedef struct
 {
 	Term* fun;
 	Term* args;
-	int _argCount;
+	size _argCount;
 } ApplicationData;
 
 typedef struct
@@ -331,6 +351,8 @@ struct Term
 	union
 	{
 		ConstantData constant;
+		BooleanData boolean;
+		
 		ArrayData array;
 		StringData string;
 		StructData structure;
@@ -360,6 +382,8 @@ struct Term
 		BlockData block;
 	} data;
 	SourceInfo info;
+
+	const Type* type;
 };
 
 // Statements
@@ -378,7 +402,7 @@ struct Statement
 	union
 	{
 		DeclarationData declaration;
-		Term unit_expression;
+		Term* unit_expression;
 	} data;
 	SourceInfo info;
 };
@@ -395,13 +419,16 @@ typedef struct
 Term* newTerm(Term t);
 Type* newType(Type t);
 Statement* newStatement(Statement s);
+bool isEqualType(const Type* t1, const Type* t2);
 
 // Pretty printing
+const char* termKindToString(TermKind kind);
 void printTerm(const Term* t);
 void printStatement(const Statement* s);
 void printProgram(const Program* p);
 
 void printConstant(const ConstantData* t);
+void printBoolean(const BooleanData* t);
 void printArray(const ArrayData* a);
 void printString(const StringData* s);
 void printVar(const VarData* s);
@@ -424,11 +451,17 @@ void printDeclaration(const DeclarationData* d);
 #include <stdlib.h>
 #include <string.h>
 
+static u64 identCount = 0;
+
 identifier newIdent(void)
 {
-	static u64 identCount = 0;
 	identifier ident = (identifier){true, {.intData = identCount++}};
 	return ident;
+}
+
+u64 getMaxId(void)
+{
+	return identCount;
 }
 
 identifier makeIdent(const char* content, size_t length)
@@ -479,10 +512,91 @@ void printIdent(identifier ident)
 	}
 }
 
+bool isMemberTypesEqual(const MemberType* m1, const MemberType* m2)
+{
+	if (!isEqualIdent(&m1->name, &m2->name))
+		return false;
+	if (!isEqualType(m1->type, m2->type))
+		return false;
+	return true;
+}
+
+bool isEqualType(const Type* t1, const Type* t2)
+{
+	size count;
+	if (t1->kind != t2->kind)
+		return false;
+	switch (t1->kind)
+	{
+	case TYPE_VAR:
+		return t1->data.typeVar == t2->data.typeVar;
+
+	case BOOL:
+	case I8:
+	case I16:
+	case I32:
+	case I64:
+	case U8:
+	case U16:
+	case U32:
+	case U64:
+	case F32:
+	case F64:
+		return true;
+		
+	case POINTER_TYPE:
+		return isEqualType(
+			t1->data.pointer.pointee,
+			t2->data.pointer.pointee
+		);
+
+	case ARRAY_TYPE:
+		if (t1->data.arr.elemCount != NULL && t2->data.arr.elemCount != NULL)
+		{
+			if (*t1->data.arr.elemCount != *t2->data.arr.elemCount)
+				return false;
+		}
+		if (!isEqualType(t1->data.arr.elemType, t2->data.arr.elemType))
+			return false;
+		return true;
+
+	case FUN_TYPE:
+		count = t1->data.fun._paramCount;
+		if (count != t2->data.fun._paramCount)
+			return false;
+		for (size i = 0; i < count; i++)
+		{
+			if (!isEqualType(&t1->data.fun.paramTypes[i], &t2->data.fun.paramTypes[i]))
+				return false;
+		}
+		if (!isEqualType(t1->data.fun.retType, t2->data.fun.retType))
+			return false;
+		return true;
+
+	case STRUCT_TYPE:
+		if (t1->data.structure.isUnion != t2->data.structure.isUnion)
+			return false;
+		count = t1->data.structure._memberCount;
+		if (count != t2->data.structure._memberCount)
+			return false;
+		for (size i = 0; i < count; i++)
+		{
+			if (!isMemberTypesEqual(
+			        &t1->data.structure.memberTypes[i], &t2->data.structure.memberTypes[i]
+			    ))
+				return false;
+		}
+		return true;
+	}
+}
+
 void printType(const Type* t)
 {
-	switch (t->kind)
+    switch (t->kind)
 	{
+	case TYPE_VAR:
+		printf("tvar#%ld", t->data.typeVar);
+		break;
 	case I8:
 		printf("i8");
 		break;
@@ -513,11 +627,22 @@ void printType(const Type* t)
 	case F64:
 		printf("f64");
 		break;
+	case BOOL:
+		printf("bool");
+		break;
+
+	case POINTER_TYPE:
+		printf("(POINTER ");
+		printType(t->data.pointer.pointee);
+		printf(")");
+		break;
+		
 	case ARRAY_TYPE:
 		printf("(ARRAY_TYPE ");
 		printType(t->data.arr.elemType);
 		printf("of size %" PRIuPTR ")", *t->data.arr.elemCount);
 		break;
+		
 	case FUN_TYPE:
 		printf("(FUN_TYPE ");
 		for (size i = 0; i < t->data.fun._paramCount; i++)
@@ -525,10 +650,11 @@ void printType(const Type* t)
 			printType(&t->data.fun.paramTypes[i]);
 			printf(" ");
 		}
-		printf("->");
+		printf("-> ");
 		printType(t->data.fun.retType);
 		printf(")");
 		break;
+		
 	case STRUCT_TYPE:
 		if (t->data.structure.isUnion)
 		{
@@ -547,6 +673,63 @@ void printType(const Type* t)
 		}
 		printf(")");
 	}
+}
+
+const char* termKindToString(TermKind kind)
+{
+	switch (kind)
+	{
+	case CONSTANT:
+		return "CONSTANT";
+	case BOOLEAN:
+		return "BOOLEAN";
+	case ARRAY:
+		return "ARRAY";
+	case STRUCTURE:
+		return "STRUCTURE";
+	case STRING:
+		return "STRING";
+	case VAR:
+		return "VAR";
+	case REF:
+		return "REF";
+	case DEREF:
+		return "DEREF";
+	case CAST:
+		return "CAST";
+	case TYPED:
+		return "TYPED";
+	case RETURN:
+		return "RETURN";
+	case BREAK:
+		return "BREAK";
+	case CONTINUE:
+		return "CONTINUE";
+	case UNARY_OP:
+		return "UNARY_OP";
+	case BINARY_OP:
+		return "BINARY_OP";
+	case BINARY_OP_ASSIGN:
+		return "BINARY_OP_ASSIGN";
+	case SUBSCRIPT:
+		return "SUBSCRIPT";
+	case ACCESS:
+		return "ACCESS";
+	case CONDITIONAL:
+		return "CONDITIONAL";
+	case LOOP:
+		return "LOOP";
+	case APPLICATION:
+		return "APPLICATION";
+	case FUNCTION:
+		return "FUNCTION";
+	case ASSIGNMENT:
+		return "ASSIGNMENT";
+	case BLOCK:
+		return "BLOCK";
+	}
+
+	return "UNKNOWN_TERM";
 }
 
 void printConstant(const ConstantData* t)
@@ -587,6 +770,11 @@ void printConstant(const ConstantData* t)
 		printf("Not a constant!");
 		break;
 	}
+}
+
+void printBoolean(const BooleanData* t)
+{
+	t ? printf("true") : printf("false");
 }
 
 void printArray(const ArrayData* a)
@@ -739,7 +927,7 @@ void printApplication(const ApplicationData* a)
 	printf("(APP (");
 	printTerm(a->fun);
 	printf(") ");
-	for (int i = 0; i < a->_argCount; i++)
+	for (size i = 0; i < a->_argCount; i++)
 	{
 		printTerm(&a->args[i]);
 		if (i < a->_argCount - 1)
@@ -789,6 +977,32 @@ void printAssignment(const AssignmentData* a)
 	printf(")");
 }
 
+void printConditional(const ConditionalData* c)
+{
+	printf("(IF ");
+	printTerm(c->cond);
+	printf(" THEN ");
+	printTerm(c->thenBranch);
+	if (c->elseBranch == NULL)
+	{
+		printf(")");
+	} else
+	{
+		printf(" ELSE ");
+		printTerm(c->elseBranch);
+		printf(")");
+	}
+}
+
+void printLoop(const LoopData* l)
+{
+	printf("(LOOP ");
+	printTerm(l->cond);
+	printf(" ");
+	printTerm(l->body);
+	printf(")");
+}
+
 static int level = 0;
 
 void indent(int n)
@@ -822,10 +1036,19 @@ void printBlock(const BlockData* b)
 
 void printTerm(const Term* t)
 {
+	bool hasType = t->type != NULL;
+	if (hasType)
+	{
+		printf("(");
+	}
+	
 	switch (t->kind)
 	{
 	case CONSTANT:
 		printConstant(&t->data.constant);
+		break;
+	case BOOLEAN:
+		printBoolean(&t->data.boolean);
 		break;
 	case ARRAY:
 		printArray(&t->data.array);
@@ -887,19 +1110,33 @@ void printTerm(const Term* t)
 	case BLOCK:
 		printBlock(&t->data.block);
 		break;
-	// TODO: Still have to add a few cases, hopefully the last ones
 	case SUBSCRIPT:
-		printf("(TODO SUBSCRIPT)");
+		printf("(ACCESS ");
+		printTerm(t->data.subscript.term);
+		printf("[");
+		printTerm(t->data.subscript.index);
+		printf("]");
+		printf(")");
 		break;
 	case ACCESS:
-		printf("(TODO ACCESS)");
+		printf("(ACCESS ");
+		printTerm(t->data.access.term);
+		printf(" . ");
+		printIdent(t->data.access.member);
+		printf(")");
 		break;
 	case CONDITIONAL:
-		printf("(TODO CONDITIONAL)");
+		printConditional(&t->data.cond);
 		break;
 	case LOOP:
-		printf("(TODO LOOP)");
+		printLoop(&t->data.loop);
 		break;
+	}
+	if (hasType)
+	{
+		printf(" : ");
+		printType(t->type);
+		printf(")");
 	}
 }
 
@@ -935,7 +1172,7 @@ void printStatement(const Statement* stmt)
 		printDeclaration(&stmt->data.declaration);
 		break;
 	case UNIT_EXPRESSION:
-		printTerm(&stmt->data.unit_expression);
+		printTerm(stmt->data.unit_expression);
 		break;
 	}
 }

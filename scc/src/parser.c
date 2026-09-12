@@ -270,8 +270,10 @@ double parseFloatingPoint(const char* start, size len, enum NumericBase base)
 	}
 }
 
-ConstantData parseNumber(Token numToken)
+Term parseNumber(Token numToken)
 {
+	ConstantData con;
+
 	char* start = numToken.start;
 	size len = numToken.len;
 
@@ -425,65 +427,77 @@ ConstantData parseNumber(Token numToken)
 			c = start[i];
 			i8Val = i8Val * (int8_t)base + parseDigit(c, base);
 		}
-		return (ConstantData){{.i8Val = i8Val}, {I8, {0}}};
+		con = (ConstantData){{.i8Val = i8Val}, {I8, {0}}};
+		break;
 	case I16:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			i16Val = i16Val * (int16_t)base + parseDigit(c, base);
 		}
-		return (ConstantData){{.i16Val = i16Val}, {I16, {0}}};
+		con = (ConstantData){{.i16Val = i16Val}, {I16, {0}}};
+		break;
 	case I32:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			i32Val = i32Val * (int32_t)base + parseDigit(c, base);
 		}
-		return (ConstantData){{.i32Val = i32Val}, {I32, {0}}};
+		con = (ConstantData){{.i32Val = i32Val}, {I32, {0}}};
+		break;
 	case I64:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			i64Val = i64Val * base + parseDigit(c, base);
 		}
-		return (ConstantData){{.i64Val = i64Val}, {I64, {0}}};
+		con = (ConstantData){{.i64Val = i64Val}, {I64, {0}}};
+		break;
 	case U8:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			u8Val = u8Val * (uint8_t)base + (uint8_t)parseDigit(c, base);
 		}
-		return (ConstantData){{.u8Val = u8Val}, {U8, {0}}};
+		con = (ConstantData){{.u8Val = u8Val}, {U8, {0}}};
+		break;
 	case U16:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			u16Val = u16Val * (uint16_t)base + (uint16_t)parseDigit(c, base);
 		}
-		return (ConstantData){{.u16Val = u16Val}, {U16, {0}}};
+		con = (ConstantData){{.u16Val = u16Val}, {U16, {0}}};
+		break;
 	case U32:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			u32Val = u32Val * (uint32_t)base + (unsigned)parseDigit(c, base);
 		}
-		return (ConstantData){{.u32Val = u32Val}, {U32, {0}}};
+		con = (ConstantData){{.u32Val = u32Val}, {U32, {0}}};
+		break;
 	case U64:
 		for (size i = 0; i < len; i++)
 		{
 			c = start[i];
 			u64Val = u64Val * (uint64_t)base + (unsigned)parseDigit(c, base);
 		}
-		return (ConstantData){{.u64Val = u64Val}, {U64, {0}}};
+		con = (ConstantData){{.u64Val = u64Val}, {U64, {0}}};
+		break;
 	case F32:
 		f32Val = (float)parseFloatingPoint(start, len, base);
-		return (ConstantData){{.f32Val = f32Val}, {F32, {0}}};
+		con = (ConstantData){{.f32Val = f32Val}, {F32, {0}}};
+		break;
 	case F64:
 		f64Val = parseFloatingPoint(start, len, base);
-		return (ConstantData){{.f64Val = f64Val}, {F64, {0}}};
+		con = (ConstantData){{.f64Val = f64Val}, {F64, {0}}};
+		break;
 	default:
 		logFatal("Unreachable");
 	}
+
+	return (Term){CONSTANT, {.constant = con}, {numToken.line}, newType((Type){type, {0}})};
 }
 
 Term parseAtom(void)
@@ -499,11 +513,11 @@ Term parseAtom(void)
 		{
 			logFatal("Undefined variable %.*s in line %d.", tok.len, tok.start, tok.line);
 		}
-		return (Term){VAR, {.var = {scopeData->newName}}, s};
+		return (Term){VAR, {.var = {scopeData->newName}}, s, NULL};
 	case TOK_NUMBER:
-		return (Term){CONSTANT, {.constant = parseNumber(tok)}, s};
+		return parseNumber(tok);
 	case TOK_STRING:
-		return (Term){STRING, {.string = {makeIdent(tok.start, tok.len)}}, s};
+		return (Term){STRING, {.string = {makeIdent(tok.start, tok.len)}}, s, NULL};
 	default:
 		logFatal("Not an atom: %d.", tok.kind);
 		abort();
@@ -696,12 +710,13 @@ Term parseFactor(void)
 			initList = parseNonEmptyInitList();
 			expect(TOK_RIGHT_BRACE);
 			return (Term
-			){STRUCTURE, {.structure = {isUnion, (Member*)initList.items, initList.count}}, s};
+			){STRUCTURE, {.structure = {isUnion, (Member*)initList.items, initList.count}}, s, NULL
+			};
 		}
 		else
 		{
 			nextToken();
-			return (Term){STRUCTURE, {.structure = {isUnion, NULL, 0}}, s};
+			return (Term){STRUCTURE, {.structure = {isUnion, NULL, 0}}, s, NULL};
 		}
 		break;
 	default:
@@ -743,7 +758,7 @@ Term parsePostfix(void)
 			nextToken();
 			if (post.kind != VAR)
 			{
-				logFatal("Can only instantiate a type wiht a known specifier.");
+				logFatal("Can only instantiate a type with a known specifier.");
 			}
 			string string = toString(&post.data.var.name);
 			Type* type = (Type*)mapGet(&typeDefinitions, string.chars, string.length);
@@ -762,13 +777,16 @@ Term parsePostfix(void)
 				post = (Term
 				){STRUCTURE,
 				  {.structure = {type->data.structure.isUnion, (Member*)inits.items, inits.count}},
-				  s};
+				  s,
+				  NULL};
 			}
 			else
 			{
 				nextToken();
-				post = (Term
-				){STRUCTURE, {.structure = {type->data.structure.isUnion, (Member*)NULL, 0}}, s};
+				post = (Term){STRUCTURE,
+				              {.structure = {type->data.structure.isUnion, (Member*)NULL, 0}},
+				              s,
+				              NULL};
 			}
 			break;
 
@@ -776,41 +794,42 @@ Term parsePostfix(void)
 			nextToken();
 			Term* indexPtr = newTerm(parseTerm());
 			expect(TOK_RIGHT_BRACKET);
-			post = (Term){SUBSCRIPT, {.subscript = {newTerm(post), indexPtr}}, s};
+			post = (Term){SUBSCRIPT, {.subscript = {newTerm(post), indexPtr}}, s, NULL};
 			break;
 		case TOK_LEFT_PAREN:
 			nextToken();
 			if (peekToken().kind == TOK_RIGHT_PAREN)
 			{
 				nextToken();
-				post = (Term){APPLICATION, {.app = {newTerm(post), NULL, 0}}, s};
+				post = (Term){APPLICATION, {.app = {newTerm(post), NULL, 0}}, s, NULL};
 			}
 			else
 			{
 				list = parseNonEmptyArgList();
 				expect(TOK_RIGHT_PAREN);
 				post = (Term
-				){APPLICATION, {.app = {newTerm(post), (Term*)list.items, (int)list.count}}, s};
+				){APPLICATION, {.app = {newTerm(post), (Term*)list.items, list.count}}, s, NULL
+				};
 			}
 			break;
 		// TODO: Where to add auto-dereferincg?
 		case TOK_DOT:
 			nextToken();
 			Token ident = expect(TOK_IDENTIFIER);
-			post =
-			    (Term){ACCESS, {.access = {newTerm(post), makeIdent(ident.start, ident.len)}}, s};
+			post = (Term
+			){ACCESS, {.access = {newTerm(post), makeIdent(ident.start, ident.len)}}, s, NULL};
 			break;
 		case TOK_INCREMENT:
 			nextToken();
-			post = (Term){UNARY_OP, {.unOp = {POST_INCREMENT, newTerm(post)}}, s};
+			post = (Term){UNARY_OP, {.unOp = {POST_INCREMENT, newTerm(post)}}, s, NULL};
 			break;
 		case TOK_DECREMENT:
 			nextToken();
-			post = (Term){UNARY_OP, {.unOp = {POST_DECREMENT, newTerm(post)}}, s};
+			post = (Term){UNARY_OP, {.unOp = {POST_DECREMENT, newTerm(post)}}, s, NULL};
 			break;
 		case TOK_DOT_STAR:
 			nextToken();
-			post = (Term){DEREF, {.deref = {newTerm(post)}}, s};
+			post = (Term){DEREF, {.deref = {newTerm(post)}}, s, NULL};
 			break;
 		default:
 			return post;
@@ -874,27 +893,27 @@ Term parsePrefix(void)
 			    "referenced."
 			);
 		}
-		return (Term){REF, {.ref = {t}}, s};
+		return (Term){REF, {.ref = {t}}, s, NULL};
 	case TOK_INCREMENT:
 		if (!isModifiableLValue(t))
 		{
 			logFatal("Non-modifiable value cannot be modfied.");
 		}
-		return (Term){UNARY_OP, {.unOp = {PRE_INCREMENT, t}}, s};
+		return (Term){UNARY_OP, {.unOp = {PRE_INCREMENT, t}}, s, NULL};
 	case TOK_DECREMENT:
 		if (!isModifiableLValue(t))
 		{
 			logFatal("Non-modifiable value cannot be modfied.");
 		}
-		return (Term){UNARY_OP, {.unOp = {PRE_DECREMENT, t}}, s};
+		return (Term){UNARY_OP, {.unOp = {PRE_DECREMENT, t}}, s, NULL};
 	case TOK_MINUS:
-		return (Term){UNARY_OP, {.unOp = {NEG, t}}, s};
+		return (Term){UNARY_OP, {.unOp = {NEG, t}}, s, NULL};
 	case TOK_PLUS:
 		return parseTerm();
 	case TOK_TILDE:
-		return (Term){UNARY_OP, {.unOp = {BIT_NOT, t}}, s};
+		return (Term){UNARY_OP, {.unOp = {BIT_NOT, t}}, s, NULL};
 	case TOK_EXCLAMATION:
-		return (Term){UNARY_OP, {.unOp = {NOT, t}}, s};
+		return (Term){UNARY_OP, {.unOp = {NOT, t}}, s, NULL};
 	default:
 		logFatal("Unreachable");
 	}
@@ -1009,18 +1028,17 @@ Term parseBinary(int minPrec)
 		case TOK_OR:
 			nextToken();
 			BinaryOpKind binOp = tokToBinOp(next.kind);
-			term = (Term
-			){BINARY_OP, {.binOp = {binOp, newTerm(term), newTerm(parseBinary(prec + 1))}}, s};
+			term = (Term) {BINARY_OP, {.binOp = {binOp, newTerm(term), newTerm(parseBinary(prec + 1))}}, s, NULL};
 			break;
 
 		case TOK_AS:
 			nextToken();
-			term = (Term){CAST, {.cast = {newTerm(term), parseType()}}, s};
+			term = (Term){CAST, {.cast = {newTerm(term), parseType()}}, s, NULL};
 			break;
 
 		case TOK_COLON:
 			nextToken();
-			term = (Term){TYPED, {.typed = {newTerm(term), parseType()}}, s};
+			term = (Term){TYPED, {.typed = {newTerm(term), parseType()}}, s, NULL};
 			break;
 		default:
 			break;
@@ -1038,7 +1056,7 @@ Term parseBracedBlock(SourceInfo s)
 
 	if (peekToken().kind == TOK_RIGHT_BRACE)
 	{
-		return (Term){BLOCK, {.block = {.stmts = NULL, ._stmtCount = 0}}, s};
+		return (Term){BLOCK, {.block = {.stmts = NULL, ._stmtCount = 0}}, s, NULL};
 	}
 
 	enterScope();
@@ -1056,7 +1074,7 @@ Term parseBracedBlock(SourceInfo s)
 		}
 		else
 		{
-			Term expr = parseTerm();
+			Term* expr = newTerm(parseTerm());
 			peek = peekToken();
 			if (peek.kind == TOK_SEMICOLON)
 			{
@@ -1066,7 +1084,7 @@ Term parseBracedBlock(SourceInfo s)
 			}
 			else if (peek.kind == TOK_RIGHT_BRACE)
 			{
-				trailingExp = newTerm(expr);
+				trailingExp = expr;
 				break;
 			}
 			else
@@ -1079,7 +1097,7 @@ Term parseBracedBlock(SourceInfo s)
 
 	leaveScope();
 
-	return (Term){BLOCK, {.block = {list.items, list.count, trailingExp}}, s};
+	return (Term){BLOCK, {.block = {list.items, list.count, trailingExp}}, s, NULL};
 }
 
 // Needed to be a global varaible, so that when performing lambda-lifting,
@@ -1089,7 +1107,6 @@ DynArray declarations;
 Term parseControlFlow(void)
 {
 	Token peek;
-	Token ident;
 	Term *t1, *t2, *t3;
 	DynArray list;
 
@@ -1111,25 +1128,25 @@ Term parseControlFlow(void)
 		{
 			t3 = NULL;
 		}
-		return (Term){CONDITIONAL, {.cond = {t1, t2, t3}}, s};
+		return (Term){CONDITIONAL, {.cond = {t1, t2, t3}}, s, NULL};
 	case TOK_FOR:
 		nextToken();
 		t1 = newTerm(parseTerm());
 		expect(TOK_DO);
 		t2 = newTerm(parseTerm());
-		return (Term){LOOP, {.loop = {t1, t2}}, s};
+		return (Term){LOOP, {.loop = {t1, t2}}, s, NULL};
 
 	// TODO: Add defer
 	case TOK_BREAK:
 		nextToken();
-		return (Term){BREAK, {0}, s};
+		return (Term){BREAK, {0}, s, NULL};
 	case TOK_CONTINUE:
 		nextToken();
-		return (Term){CONTINUE, {0}, s};
+		return (Term){CONTINUE, {0}, s, NULL};
 	case TOK_RETURN:
 		nextToken();
 		t1 = newTerm(parseTerm());
-		return (Term){RETURN, {.retur = {t1}}, s};
+		return (Term){RETURN, {.retur = {t1}}, s, NULL};
 
 	case TOK_FUN:
 		nextToken();
@@ -1141,17 +1158,19 @@ Term parseControlFlow(void)
 		enterScope();
 
 		peek = peekToken();
+		identifier recIdent;
 		if (peek.kind == TOK_LEFT_PAREN)
 		{
-			ident = (const Token){0};
+			recIdent = newIdent();
 		}
 		else if (peek.kind == TOK_IDENTIFIER)
 		{
 			nextToken();
-			ident = peek;
+			recIdent = declare(peek.start, peek.len, false);
 		}
 		else
 		{
+			recIdent = newIdent();
 			logFatal("Unexpected Token %d.", peek.kind);
 		}
 
@@ -1185,15 +1204,16 @@ Term parseControlFlow(void)
 		Term* lambda =
 		    newTerm((Term){FUNCTION,
 		                   {.fun =
-		                        {makeIdent(ident.start, ident.len), isEmpty ? NULL : list.items,
+		                        {recIdent, isEmpty ? NULL : list.items,
 		                         isEmpty ? 0 : list.count, type, t1}},
-		                   s});
+		                   s,
+		                   NULL});
 		DeclarationData decl = {lambdaIdent, NULL, false, lambda};
 		appendArray(&declarations, (void*)&decl);
 
 		leaveScope();
 		scope = oldScope;
-		return (Term){VAR, {.var = {lambdaIdent}}, s};
+		return (Term){VAR, {.var = {lambdaIdent}}, s, NULL};
 
 	case TOK_LEFT_BRACE:
 		nextToken();
@@ -1221,7 +1241,7 @@ Term parseTerm(void)
 		}
 
 		value = newTerm(parseTerm());
-		return (Term){ASSIGNMENT, {.assignment = {newTerm(lvalue), value}}, lvalue.info};
+		return (Term){ASSIGNMENT, {.assignment = {newTerm(lvalue), value}}, lvalue.info, NULL};
 	}
 	else
 	{
@@ -1265,7 +1285,7 @@ Type parseType(void)
 	bool isEmptyFun;
 
 	Token tok = nextToken();
-	ConstantData num;
+	Term num;
 	DynArray list;
 	switch (tok.kind)
 	{
@@ -1302,7 +1322,7 @@ Type parseType(void)
 		expect(TOK_LEFT_BRACKET);
 		int* x = (int*)malloc(sizeof(int));
 		// TODO: The element count of an array shall be of type usize
-		*x = (int)num.data.i32Val;
+		*x = (int)num.data.constant.data.i32Val;
 		return (Type){ARRAY_TYPE, {.arr = {newType(parseType()), (size*)x}}};
 
 	case TOK_UNION:
@@ -1375,7 +1395,7 @@ Program parse(char* source)
 		case TOK_FUN:
 			nextToken();
 			Token identTok = expect(TOK_IDENTIFIER);
-			identifier ident = makeIdent(identTok.start, identTok.len);
+			identifier ident = declare(identTok.start, identTok.len, false);
 
 			bool isEmpty;
 			DynArray formals;
@@ -1406,9 +1426,13 @@ Program parse(char* source)
 
 			Term fun = (Term){FUNCTION,
 			                  {.fun =
-			                       {ident, isEmpty ? NULL : formals.items,
-			                        isEmpty ? 0 : formals.count, type, newTerm(t)}},
-			                  s};
+			                       {ident,
+			                        isEmpty ? NULL : formals.items,
+			                        isEmpty ? 0 : formals.count,
+			                        type,
+			                        newTerm(t)}},
+			                  s,
+			                  NULL};
 
 			newDecl = (DeclarationData){ident, NULL, false, newTerm(fun)};
 			appendArray(&declarations, (void*)&newDecl);

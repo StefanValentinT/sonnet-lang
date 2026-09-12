@@ -1,11 +1,14 @@
-#include "lexer.c"
-#include "log.c"
-#include "parser.c"
-#include "stdbool.h"
-#include "syntax.c"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+
+#include "lexer.c"
+#include "log.c"
+#include "parser.c"
+#include "syntax.c"
+#include "typer.c"
+#include "emitter.c"
 
 void panic(void) { exit(EXIT_FAILURE); }
 
@@ -77,6 +80,10 @@ int main(int argc, char** argv)
 	char* source = readFile(fileName);
 	Program ast = parse(source);
 	printProgram(&ast);
+	type(&ast, getMaxId());
+	printf("--- Typed AST ---\n");
+	printProgram(&ast);
+	// emitProgram(&ast);
 
 	free(source);
 

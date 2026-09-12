@@ -14,6 +14,7 @@ typedef struct
 DynArray initArray(size capac, size elemSize);
 void freeArray(DynArray* arr);
 void appendArray(DynArray* arr, void* value);
+void insertArray(DynArray* arr, size index, void* value);
 void* getArray(DynArray* arr, size index);
 
 #endif
@@ -48,7 +49,9 @@ void appendArray(DynArray* arr, void* value)
 	arr->count++;
 }
 
-void* getArray(DynArray* arr, size index) { return (char*)arr->items + (index * arr->elemSize); }
+void* getArray(DynArray* arr, size index) {
+	return (char*)arr->items + (index * arr->elemSize);
+}
 
 void freeArray(DynArray* arr)
 {
