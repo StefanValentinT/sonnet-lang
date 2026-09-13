@@ -83,7 +83,8 @@ int main(int argc, char** argv)
 	type(&ast, getMaxId());
 	printf("--- Typed AST ---\n");
 	printProgram(&ast);
-	// emitProgram(&ast);
+	printf("--- Emitting ----\n");
+	emitProgram(&ast);
 
 	free(source);
 

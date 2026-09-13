@@ -110,9 +110,8 @@ TypeConstraint* getConstraint(identifier* id)
 		{
 			TypeConstraint* empty = newEmptyConstraint();
 			mapPut(
-			    &externIdentifierConstraints,
-			    id->data.stringData.charData, id->data.stringData.length,
-			    empty
+			    &externIdentifierConstraints, id->data.stringData.charData,
+			    id->data.stringData.length, empty
 			);
 			return empty;
 		}
@@ -136,40 +135,6 @@ bool insertConstraint(identifier* id, Type* type)
 	}
 
 	return constrainTypes(constraint->type, type);
-}
-
-bool isIntegralType(const Type* type)
-{
-	switch (type->kind)
-	{
-	case I8:
-	case I16:
-	case I32:
-	case I64:
-	case U8:
-	case U16:
-	case U32:
-	case U64:
-		return true;
-
-	default:
-		return false;
-	}
-}
-
-bool isNumericType(const Type* type)
-{
-	if (isIntegralType(type))
-		return true;
-	switch (type->kind)
-	{
-	case F32:
-	case F64:
-		return true;
-		
-	default:
-		return false;
-	}
 }
 
 Type* resolveType(Type* type)
@@ -234,7 +199,7 @@ bool occursIn(size var, Type* type)
 
 	case POINTER_TYPE:
 		return occursIn(var, type->data.pointer.pointee);
-	
+
 	case ARRAY_TYPE:
 		return occursIn(var, type->data.arr.elemType);
 
@@ -299,14 +264,12 @@ bool constrainTypes(Type* a, Type* b)
 	case U64:
 	case F32:
 	case F64:
+	case BOOL:
 		return true;
 
 	case POINTER_TYPE:
-		return constrainTypes(
-			a->data.pointer.pointee,
-			b->data.pointer.pointee
-		);
-		
+		return constrainTypes(a->data.pointer.pointee, b->data.pointer.pointee);
+
 	case ARRAY_TYPE:
 		if (a->data.arr.elemCount != NULL && b->data.arr.elemCount != NULL &&
 		    *a->data.arr.elemCount != *b->data.arr.elemCount)
@@ -360,8 +323,7 @@ bool constrainTypeTo(Type* toConstrain, Type target)
 	if (toConstrain->kind != TYPE_VAR)
 		return toConstrain->kind == target.kind;
 
-	if (target.kind == TYPE_VAR &&
-	    toConstrain->data.typeVar == target.data.typeVar)
+	if (target.kind == TYPE_VAR && toConstrain->data.typeVar == target.data.typeVar)
 		return true;
 
 	if (occursIn(toConstrain->data.typeVar, &target))
@@ -372,7 +334,7 @@ bool constrainTypeTo(Type* toConstrain, Type target)
 }
 
 const Type boolType = (Type){BOOL, {0}};
-const Type unitType = (Type){STRUCT_TYPE, {.structure = {NULL, 0, false}} };
+const Type unitType = (Type){STRUCT_TYPE, {.structure = {NULL, 0, false}}};
 
 Type* typeTerm(Term* term)
 {
@@ -385,6 +347,10 @@ Type* typeTerm(Term* term)
 	{
 	case CONSTANT:
 		result = &term->data.constant.numericType;
+		break;
+
+	case BOOLEAN:
+		result = term->type;
 		break;
 
 	case VAR:
@@ -403,9 +369,11 @@ Type* typeTerm(Term* term)
 		}
 		break;
 
-	case FUNCTION: {}
+	case FUNCTION:
+	{
+	}
 		Type* prevReturnType = currentReturnType;
-		
+
 		Type* params = malloc(sizeof(Type) * term->data.fun._formalCount);
 		if (params == NULL)
 		{
@@ -439,11 +407,12 @@ Type* typeTerm(Term* term)
 		}
 		currentReturnType = returnType;
 
-		functionType = newType((Type
-		){.kind = FUN_TYPE,
-		  .data.fun = {
-		      .paramTypes = params, ._paramCount = term->data.fun._formalCount, .retType = returnType
-		  }});
+		functionType = newType((Type){.kind = FUN_TYPE,
+		                              .data.fun = {
+		                                  .paramTypes = params,
+		                                  ._paramCount = term->data.fun._formalCount,
+		                                  .retType = returnType
+		                              }});
 
 		if (!insertConstraint(&term->data.fun.recBinder, functionType))
 			logFatal("Conflicting recursive function binding.");
@@ -463,22 +432,25 @@ Type* typeTerm(Term* term)
 		functionType = typeTerm(term->data.app.fun);
 		if (functionType->kind != FUN_TYPE)
 		{
-		    logFatal("Can not apply a non-function value.");
+			logFatal("Can not apply a non-function value.");
 		}
 		if (term->data.app._argCount != functionType->data.fun._paramCount)
 		{
-			logFatal("Function of fixed arity can not be applied to any other number of arguments.");
+			logFatal("Function of fixed arity can not be applied to any other number of arguments."
+			);
 		}
 		for (size i = 0; i < term->data.app._argCount; i++)
 		{
-			if (!constrainTypes(typeTerm(&term->data.app.args[i]), &functionType->data.fun.paramTypes[i]))
+			if (!constrainTypes(
+			        typeTerm(&term->data.app.args[i]), &functionType->data.fun.paramTypes[i]
+			    ))
 			{
 				logFatal("Incompatible argument and parameter types.");
 			}
 		}
 
 		result = functionType->data.fun.retType;
-		
+
 		break;
 
 	// case ARRAY:
@@ -488,7 +460,9 @@ Type* typeTerm(Term* term)
 	// case DEREF:
 	// case CAST:
 	// case TYPED:
-	case RETURN: {}
+	case RETURN:
+	{
+	}
 		Type* retExpType = typeTerm(term->data.retur.exp);
 		if (currentReturnType == NULL || !constrainTypes(retExpType, currentReturnType))
 		{
@@ -496,19 +470,21 @@ Type* typeTerm(Term* term)
 		}
 		result = newType(unitType);
 		break;
-		
+
 	case BREAK:
 		result = newType(unitType);
 		break;
-		
+
 	case CONTINUE:
 		result = newType(unitType);
 		break;
-		
+
 	// case UNARY_OP:
-	case BINARY_OP: {}
+	case BINARY_OP:
+	{
+	}
 		// var a; var b; var x = a + b; x = 10i32; does NOT work right now
-		
+
 		Type* leftType = typeTerm(term->data.binOp.a);
 		Type* rightType = typeTerm(term->data.binOp.b);
 		leftType = resolveType(leftType);
@@ -524,10 +500,12 @@ Type* typeTerm(Term* term)
 					logFatal("Operands of + must have the same numeric type.");
 				}
 				result = resolveType(leftType);
-			} else if (leftType->kind == POINTER_TYPE && isIntegralType(rightType))
+			}
+			else if (leftType->kind == POINTER_TYPE && isIntegralType(rightType))
 			{
 				result = leftType;
-			} else if (isIntegralType(leftType) && rightType->kind == POINTER_TYPE)
+			}
+			else if (isIntegralType(leftType) && rightType->kind == POINTER_TYPE)
 			{
 				result = rightType;
 			}
@@ -592,20 +570,23 @@ Type* typeTerm(Term* term)
 				logFatal("Operands of equality comparison must have the same type.");
 			}
 			leftType = resolveType(leftType);
-			if (!isNumericType(leftType) && leftType->kind != BOOL && leftType->kind != POINTER_TYPE)
+			if (!isNumericType(leftType) && leftType->kind != BOOL &&
+			    leftType->kind != POINTER_TYPE)
 			{
 				logFatal("Types can not be compared for equality.");
 			}
 			result = newType(boolType);
-			break;	
+			break;
 		}
-		
+
 		break;
-		
+
 	// case BINARY_OP_ASSIGN:
 	// case SUBSCRIPT:
 	// case ACCESS:
-	case CONDITIONAL: {}
+	case CONDITIONAL:
+	{
+	}
 		Type* condType = typeTerm(term->data.cond.cond);
 		if (!constrainTypeTo(condType, boolType))
 		{
@@ -621,8 +602,8 @@ Type* typeTerm(Term* term)
 			}
 		}
 		result = thenType;
-	 	break;
-	 	
+		break;
+
 	// case LOOP:
 	// case ASSIGNMENT:
 	case BLOCK:
@@ -643,19 +624,24 @@ Type* typeTerm(Term* term)
 					logFatal("Conflicting declaration type.");
 				}
 				term->data.block.stmts[i].data.declaration.type = type;
-			} else
+			}
+			else
 			{
 				Type* type = typeTerm(term->data.block.stmts[i].data.unit_expression);
 				if (!constrainTypeTo(type, unitType))
 				{
-					logFatal("Expression in block does not return unit, possibly ignoring a value.");
+					logFatal("Expression in block does not return unit, possibly ignoring a value."
+					);
 				}
 				term->data.block.stmts[i].data.unit_expression->type = type;
 			}
 		}
-		if (term->data.block.exp != NULL) {
+		if (term->data.block.exp != NULL)
+		{
 			result = typeTerm(term->data.block.exp);
-		} else {
+		}
+		else
+		{
 			result = newType(unitType);
 		}
 		break;
@@ -666,13 +652,11 @@ Type* typeTerm(Term* term)
 	}
 	if (result == NULL)
 	{
-	    logFatal("Could not type %s.", termKindToString(term->kind));
+		logFatal("Could not type %s.", termKindToString(term->kind));
 	}
 	term->type = resolveType(result);
 	return (Type*)term->type;
 }
-
-#include <stdio.h>
 
 void type(Program* prog, u64 maxId)
 {
@@ -680,7 +664,14 @@ void type(Program* prog, u64 maxId)
 
 	for (size i = 0; i < prog->_declCount; i++)
 	{
-		Type* type = typeTerm(prog->decls[i].exp);
+		Type* type;
+		if (prog->decls[i].exp != NULL)
+		{
+			type = typeTerm(prog->decls[i].exp);
+		} else
+		{
+			type = newTypeVar();
+		}
 		if (prog->decls[i].type != NULL)
 		{
 			if (!constrainTypes(type, prog->decls[i].type))

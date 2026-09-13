@@ -383,7 +383,7 @@ struct Term
 	} data;
 	SourceInfo info;
 
-	const Type* type;
+	Type* type;
 };
 
 // Statements
@@ -420,9 +420,14 @@ Term* newTerm(Term t);
 Type* newType(Type t);
 Statement* newStatement(Statement s);
 bool isEqualType(const Type* t1, const Type* t2);
+bool isIntegralType(const Type* type);
+bool isNumericType(const Type* type);
+bool isSignedType(const Type* type);
+bool isFloatType(const Type* type);
 
 // Pretty printing
 const char* termKindToString(TermKind kind);
+void printType(const Type* t);
 void printTerm(const Term* t);
 void printStatement(const Statement* s);
 void printProgram(const Program* p);
@@ -519,6 +524,68 @@ bool isMemberTypesEqual(const MemberType* m1, const MemberType* m2)
 	if (!isEqualType(m1->type, m2->type))
 		return false;
 	return true;
+}
+
+bool isIntegralType(const Type* type)
+{
+	switch (type->kind)
+	{
+	case I8:
+	case I16:
+	case I32:
+	case I64:
+	case U8:
+	case U16:
+	case U32:
+	case U64:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+bool isNumericType(const Type* type)
+{
+	if (isIntegralType(type))
+		return true;
+	switch (type->kind)
+	{
+	case F32:
+	case F64:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+bool isSignedType(const Type* type)
+{
+	switch (type->kind)
+	{
+		case I8:
+		case I16:
+		case I32:
+		case I64:
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+bool isFloatType(const Type* type)
+{
+	switch (type->kind)
+	{
+		case F32:
+		case F64:
+			return true;
+
+		default:
+			return false;
+	}
 }
 
 bool isEqualType(const Type* t1, const Type* t2)
@@ -658,14 +725,15 @@ void printType(const Type* t)
 	case STRUCT_TYPE:
 		if (t->data.structure.isUnion)
 		{
-			printf("(UNION ");
+			printf("(UNION");
 		}
 		else
 		{
-			printf("(STRUCT ");
+			printf("(STRUCT");
 		}
 		for (size i = 0; i < t->data.structure._memberCount; i++)
 		{
+			printf(" ");
 			MemberType m = t->data.structure.memberTypes[i];
 			printIdent(m.name);
 			printf(": ");
@@ -774,7 +842,7 @@ void printConstant(const ConstantData* t)
 
 void printBoolean(const BooleanData* t)
 {
-	t ? printf("true") : printf("false");
+	t->boolVal ? printf("true") : printf("false");
 }
 
 void printArray(const ArrayData* a)
@@ -1005,7 +1073,7 @@ void printLoop(const LoopData* l)
 
 static int level = 0;
 
-void indent(int n)
+static void indent(int n)
 {
 	if (n == 0)
 		return;

@@ -41,6 +41,8 @@ typedef enum
 	TOK_NUMBER,
 
 	TOK_FUN,
+	TOK_TRUE,
+	TOK_FALSE,
 	TOK_IF,
 	TOK_THEN,
 	TOK_ELSE,
@@ -309,6 +311,8 @@ TokenKind classifyIdent(void)
 			return checkKeyword("fun", 3, TOK_FUN);
 		case 'o':
 			return checkKeyword("for", 3, TOK_FOR);
+		case 'a':
+			return checkKeyword("false", 5, TOK_FALSE);
 		}
 		break;
 	case 'i':
@@ -326,6 +330,8 @@ TokenKind classifyIdent(void)
 			return checkKeyword("then", 4, TOK_THEN);
 		case 'y':
 			return checkKeyword("type", 4, TOK_TYPE);
+		case 'r':
+			return checkKeyword("true", 4, TOK_TRUE);
 		}
 		break;
 	case 'u':

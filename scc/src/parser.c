@@ -516,6 +516,10 @@ Term parseAtom(void)
 		return (Term){VAR, {.var = {scopeData->newName}}, s, NULL};
 	case TOK_NUMBER:
 		return parseNumber(tok);
+	case TOK_TRUE:
+		return (Term){BOOLEAN, {.boolean = {true}}, s, newType((Type){BOOL, {0}})};
+	case TOK_FALSE:
+		return (Term){BOOLEAN, {.boolean = {false}}, s, newType((Type){BOOL, {0}})};
 	case TOK_STRING:
 		return (Term){STRING, {.string = {makeIdent(tok.start, tok.len)}}, s, NULL};
 	default:
@@ -531,6 +535,8 @@ bool startsAtom(TokenKind tok)
 	case TOK_IDENTIFIER:
 	case TOK_NUMBER:
 	case TOK_STRING:
+	case TOK_TRUE:
+	case TOK_FALSE:
 		return true;
 	default:
 		return false;

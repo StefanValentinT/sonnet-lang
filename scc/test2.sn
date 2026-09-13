@@ -1,9 +1,15 @@
-val main = fun () -> 0;
+val print_i32 : (i32) -> struct{};
 
-val call_main = fun () -> main();
-
-fun factorial(x) {
-	if x == 0i64
-	then 1i64
-	else x * factorial(x-1i64)
+fun main() {
+	print_i32(10);
 }
+
+# val main = fun () -> (true and true);
+
+# val call_main = fun () -> main();
+
+# fun factorial(x) {
+# 	if x == 0i64
+# 	then 1i64
+# 	else x * factorial(x-1i64)
+# }
