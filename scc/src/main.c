@@ -79,12 +79,13 @@ int main(int argc, char** argv)
 
 	char* source = readFile(fileName);
 	Program ast = parse(source);
+	u64 maxId = getMaxId();
 	printProgram(&ast);
-	type(&ast, getMaxId());
+	type(&ast, maxId);
 	printf("--- Typed AST ---\n");
 	printProgram(&ast);
 	printf("--- Emitting ----\n");
-	emitProgram(&ast);
+	emitProgram(&ast, maxId);
 
 	free(source);
 

@@ -1,17 +1,18 @@
-function w $auto_1 ()
+export function $get_unit ()
 {
     @start
-    %__qbe__temp__2 =w copy 1
-    jnz %__qbe__temp__2, @__label__1, @__label__2
-    @__label__1
-    %__qbe__temp__3 =w copy 1
-    jnz %__qbe__temp__3, @__label__3, @__label__2
-    @__label__2
-    %__qbe__temp__1 =w copy 0
-    jmp @__label__4
-    @__label__3
-    %__qbe__temp__1 =w copy 1
-    @__label__4
     @return
-    ret %__qbe__temp__1
+    ret
+}
+export function $main ()
+{
+    @start
+    call $get_unit ()
+
+    %__temp__4 =w copy 10
+    call $print_i32 (w %__temp__4)
+    ret
+
+    @return
+    ret
 }

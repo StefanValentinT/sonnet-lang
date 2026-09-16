@@ -454,7 +454,15 @@ Type* typeTerm(Term* term)
 		break;
 
 	// case ARRAY:
-	// case STRUCTURE:
+	case STRUCTURE: {}
+		MemberType* members = malloc(sizeof(Member) * term->data.structure.memberCount);
+		for (size i = 0; i < term->data.structure.memberCount; i++)
+		{
+			Member m = term->data.structure.members[i];
+			members[i] = (MemberType){m.name, typeTerm(m.term)};
+		}
+		result = newType((Type){STRUCT_TYPE, {.structure = {members, term->data.structure.memberCount, term->data.structure.isUnion}}});
+		break;
 	// case STRING:
 	// case REF:
 	// case DEREF:

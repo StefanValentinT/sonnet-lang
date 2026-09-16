@@ -1,7 +1,13 @@
 val print_i32 : (i32) -> struct{};
 
+fun get_unit() {
+	struct{}
+}
+
 fun main() {
+	val unit = get_unit();
 	print_i32(10);
+	return unit;
 }
 
 # val main = fun () -> (true and true);

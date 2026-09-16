@@ -4,7 +4,7 @@
 
 #include "syntax.c"
 
-void emitProgram(Program* program);
+void emitProgram(Program* program, u64 maxId);
 
 #if __INCLUDE_LEVEL__ == 0
 
@@ -13,35 +13,61 @@ void emitProgram(Program* program);
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "log.c"
 
-#define out stdout
-
 // TODO: How to handle it, if this were to literally be the name of a variable?
-#define TEMP "%%__qbe__temp__%llu"
-#define LABEL "@__label__%llu"
+#define TEMPF "%%__temp__%llu"
+#define LABELF "@__label__%llu"
+#define TYPEF ":__struct__%llu"
+#define TYPEF_LEN 11
+#define GLOBALF "$__global__%llu"
 
-// 0 is an invalid temporary
-u64 newTemp(void)
+typedef struct
 {
-	static u64 maxTemp = 0;
-	return ++maxTemp;
+	char* buffer;
+	size count;
+	size capacity;
+} CharBuffer;
+
+void bufferAppend(CharBuffer* buf, const char* content)
+{
+    while (*content)
+    {
+        if (buf->count + 1 >= buf->capacity)
+        {
+            size_t newCapacity = buf->capacity
+                ? buf->capacity * 2
+                : 64;
+            char* newBuffer = realloc(buf->buffer, newCapacity);
+            if (newBuffer == NULL)
+            {
+                logFatal("could not allocate enough memory for emitter.");
+            }
+            buf->buffer = newBuffer;
+            buf->capacity = newCapacity;
+        }
+        buf->buffer[buf->count++] = *content++;
+    }
+    buf->buffer[buf->count] = '\0';
 }
 
-u64 newLabel(void)
+void bufferPrint(FILE* file, CharBuffer* buf)
 {
-	static u64 maxLabel = 0;
-	return ++maxLabel;
+	fprintf(file, "%.*s", (int)buf->count, buf->buffer);
 }
 
+CharBuffer typeBuffer;
+CharBuffer globalBuffer;
+CharBuffer declBuffer;
 
 int indent_depth = 0;
 void indent(void)
 {
 	for (int i = 0; i < indent_depth; i++)
 	{
-		fprintf(out, "    ");
+		bufferAppend(&declBuffer, "    ");
 	}
 }
 void down(void){
@@ -51,34 +77,194 @@ void up(void){
 	indent_depth--;
 }
 
+void declf(char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	char temp[512];
+	vsnprintf(temp, sizeof(temp), fmt, args);
+	bufferAppend(&declBuffer, temp);
+	va_end(args);
+}
+void typef(char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	char temp[512];
+	vsnprintf(temp, sizeof(temp), fmt, args);
+	bufferAppend(&typeBuffer, temp);
+	va_end(args);
+}
+void globalf(char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	char temp[512];
+	vsnprintf(temp, sizeof(temp), fmt, args);
+	bufferAppend(&globalBuffer, temp);
+	va_end(args);
+}
+
 void inst(char* fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);
 	indent();
-	vfprintf(out, fmt, args);
-	fprintf(out, "\n");
+	char temp[512];
+	vsnprintf(temp, sizeof(temp), fmt, args);
+	bufferAppend(&declBuffer, temp);
+	bufferAppend(&declBuffer, "\n");
 	va_end(args);
 }
 
-char* typeToQbe(const Type* t)
+typedef struct
+{
+	enum SymbolKind {GLOBAL, LOCAL, TYPE} kind;
+	bool isAuto;
+	union {
+		u64 id;
+		struct {
+			const char* chars;
+			size len;
+		} string;
+		struct {
+			const char* chars;
+			size len;
+			bool is_builtin;
+		} type_string;
+	} as;
+} Symbol;
+
+// 0 is an invalid temporary
+static u64 maxLocal = 0;
+Symbol newLocal(void)
+{
+	return (Symbol){LOCAL, true, {.id = ++maxLocal}};
+}
+u64 newLabel(void)
+{
+	static u64 maxLabel = 0;
+	return ++maxLabel;
+}
+Symbol newStructType(void)
+{
+	static u64 maxStruct = 0;
+	return (Symbol){TYPE, true, {.id = ++maxStruct}};
+}
+Symbol newGlobal(void)
+{
+	static u64 maxGlobal = 0;
+	return (Symbol){GLOBAL, true, {.id = ++maxGlobal}};
+}
+
+void write_globalsym(Symbol sym)
+{
+	if (sym.isAuto)
+	{
+		declf(GLOBALF, sym.as.id);
+	} else
+	{
+		declf("$%.*s", (int)sym.as.string.len, sym.as.string.chars);
+	}
+}
+void write_localsym(Symbol sym)
+{
+	if (sym.isAuto)
+	{
+		declf(TEMPF, sym.as.id);
+	} else
+	{
+		declf("%%%.*s", (int)sym.as.string.len, sym.as.string.chars);
+	}
+}
+void write_typesym(Symbol sym)
+{
+	if (sym.isAuto)
+	{
+		declf(TYPEF, sym.as.id);
+	} else 
+	{
+		if (sym.as.type_string.is_builtin)
+		{
+			declf("%.*s", (int)sym.as.type_string.len, sym.as.type_string.chars);
+		} else
+		{
+			declf(":%.*s", (int)sym.as.type_string.len, sym.as.type_string.chars);
+		}
+	}
+}
+void write_sym(Symbol sym)
+{
+	if (sym.kind == GLOBAL)
+	{
+		write_globalsym(sym);
+	} else if (sym.kind == LOCAL)
+	{
+		write_localsym(sym);
+	} else
+	{
+		write_typesym(sym);
+	}
+}
+
+Symbol idToSymbol(const identifier* id)
+{
+	if (id->isAuto)
+	{
+		return (Symbol){LOCAL, true, {.id = id->data.intData}};
+	} else
+	{
+		const char* chars = id->data.stringData.charData;
+		size len = id->data.stringData.length;
+		return (Symbol){GLOBAL, false, {.string = {chars, len}}};
+	}
+}
+
+Symbol type_sb = (Symbol){TYPE, false, {.type_string = {"sb", 2, true}}};
+Symbol type_ub = (Symbol){TYPE, false, {.type_string = {"ub", 2, true}}};
+Symbol type_sh = (Symbol){TYPE, false, {.type_string = {"sh", 2, true}}};
+Symbol type_uh = (Symbol){TYPE, false, {.type_string = {"uh", 2, true}}};
+Symbol type_w  = (Symbol){TYPE, false, {.type_string = {"w",  2, true}}};
+Symbol type_l  = (Symbol){TYPE, false, {.type_string = {"l",  2, true}}};
+Symbol type_s  = (Symbol){TYPE, false, {.type_string = {"s",  2, true}}};
+Symbol type_d  = (Symbol){TYPE, false, {.type_string = {"d",  2, true}}};
+
+
+bool isUnitType(const Type* t)
+{
+	if (t->kind == STRUCT_TYPE && t->data.structure._memberCount == 0)
+		 return true;
+	else return false;
+}
+
+Symbol convertType(const Type* t)
 {
 	switch (t->kind)
 	{
-		case BOOL: return "ub";
-		
-		case I8:  return "sb";
-		case U8:  return "ub";
-		case I16: return "sh";
-		case U16: return "uh";
+		case BOOL: return type_ub;
+		case I8:   return type_sb;
+		case U8:   return type_ub;
+		case I16:  return type_sh;
+		case U16:  return type_uh;
+		case I32:  return type_w;
+		case U32:  return type_w;
+		case I64:  return type_l;
+		case U64:  return type_l;
+		case F32:  return type_s;
+		case F64:  return type_d;
 
-		case I32: return "w";
-		case U32: return "w";
-		case I64: return "l";
-		case U64: return "l";
+		case STRUCT_TYPE:
+			if (isUnitType(t))
+			{
+				logFatal("Can not emit anything for unit type. This is a compiler error.");
+			}
+			Symbol sym = newStructType();
+			typef("type " TYPEF " = {}\n", sym.as.id);
+			return sym;
 
-		case F32: return "s";
-		case F64: return "d";
+		case FUN_TYPE:
+			logFatal("All lambdas are already lifted.");
+			break;
 
 		default:
 			logFatal("Typekind %d not yet implemented in emitter.", t->kind);
@@ -86,74 +272,109 @@ char* typeToQbe(const Type* t)
 	}
 }
 
-u64 emitExpression(Term* term)
+Symbol emitExpression(Term* term);
+
+void emitDeclaration(DeclarationData* decl)
 {
-	u64 result = 0;
+	Type* type = decl->exp->type;
+	if (!isUnitType(type))
+	{
+		write_sym(idToSymbol(&decl->name));
+		declf(" =" TYPEF " ", convertType(type));
+	}
+	emitExpression(decl->exp);
+	declf("\n");
+}
+
+Symbol emitExpression(Term* term)
+{
+	Symbol result;
 	switch (term->kind)
 	{
 	case RETURN:
-		result = 0;
-		inst("ret " TEMP "\n",  emitExpression(term->data.retur.exp));
-		break;
-
-	case BOOLEAN:
-		result = newTemp();
-		if (term->data.boolean.boolVal)
+		if (isUnitType(term->data.retur.exp->type))
 		{
-			inst(TEMP " =w copy 1", result);
+			inst("ret\n");
 		} else
 		{
-			fprintf(out, TEMP " =w copy 0", result);
+			inst("ret " TEMPF "\n",  emitExpression(term->data.retur.exp));
+		}
+		break;
+
+	case BOOLEAN: 
+		result = newLocal();
+		indent();
+		write_localsym(result);
+		if (term->data.boolean.boolVal)
+		{
+			declf(TEMPF " =w copy 1\n", result);
+		} else
+		{
+			declf(TEMPF " =w copy 0\n", result);
 		}
 		break;
 		
 	case CONSTANT:
-		result = newTemp();
+		result = newLocal();
 		indent();
-		fprintf(out, TEMP, result);
+		write_localsym(result);
 		uint64_t bits;
 		switch (term->data.constant.numericType.kind)
 		{
 		case I8:
-			fprintf(out, " = copy %d", term->data.constant.data.i8Val);
+			declf(" =w copy %d", term->data.constant.data.i8Val);
 			break;
 		case I16:
-			fprintf(out, " = copy %d", term->data.constant.data.i16Val);
+			declf(" =w copy %d", term->data.constant.data.i16Val);
 			break;
 		case I32:
-			fprintf(out, " = copy %d", term->data.constant.data.i32Val);
+			declf(" =w copy %d", term->data.constant.data.i32Val);
 			break;
 		case I64:
-			fprintf(out, " = copy %" PRIu64, term->data.constant.data.i64Val);
+			declf(" =l copy %" PRIu64, term->data.constant.data.i64Val);
 			break;
 		case U8:
-			fprintf(out, " = copy %u", term->data.constant.data.u8Val);
+			declf(" =w copy %u", term->data.constant.data.u8Val);
 			break;
 		case U16:
-			fprintf(out, " = copy %u", term->data.constant.data.u16Val);
+			declf(" =w copy %u", term->data.constant.data.u16Val);
 			break;
 		case U32:
-			fprintf(out, " = copy %u", term->data.constant.data.u32Val);
+			declf(" =w copy %u", term->data.constant.data.u32Val);
 			break;
 		case U64:
-			fprintf(out, " = copy %" PRIu64, term->data.constant.data.u64Val);
+			declf(" =l copy %" PRIu64, term->data.constant.data.u64Val);
 			break;
 		case F32:
 			memcpy(&bits, &term->data.constant.data.f32Val, sizeof(uint32_t));
-			fprintf(out, " = copy %" PRIu64, bits);
+			declf(" =s copy %" PRIu64, bits);
 			break;
 		case F64:
 			memcpy(&bits, &term->data.constant.data.f64Val, sizeof(uint64_t));
-			fprintf(out, " = copy %" PRId64, (int64_t)bits);
+			declf(" =d copy %" PRId64, (int64_t)bits);
 			break;
 		default:
 			logFatal("Not a numeric type: %d.", term->data.constant.numericType.kind);
 		}
-		fprintf(out, "\n");
+		declf("\n");
 		break;
 
+	case STRUCTURE:
+		if (isUnitType(term->type))
+		{
+			break;
+		}
+		result = newGlobal();
+		// TODO: proper struct handling
+		globalf("data " GLOBALF " = {}\n", result.as.id);
+		break;
+
+	case VAR:
+		result = idToSymbol(&term->data.var.name);
+		break;
+		
 	case BINARY_OP:
-		result = newTemp();
+		result = newLocal();
 
 		if (term->data.binOp.kind == AND)
 		{
@@ -162,17 +383,21 @@ u64 emitExpression(Term* term)
 			u64 trueLabel = newLabel();
 			u64 endLabel = newLabel();
 
-			u64 leftVal = emitExpression(term->data.binOp.a);
-			inst("jnz " TEMP ", " LABEL ", " LABEL, leftVal, bLabel, falseLabel);
-			inst(LABEL, bLabel);
-			u64 rightVal = emitExpression(term->data.binOp.b);
-			inst("jnz " TEMP ", " LABEL ", " LABEL, rightVal, trueLabel, falseLabel);
-			inst(LABEL, falseLabel);
-			inst(TEMP " =w copy 0", result);
-			inst("jmp " LABEL, endLabel);
-			inst(LABEL, trueLabel);
-			inst(TEMP " =w copy 1", result);
-			inst(LABEL, endLabel);
+			Symbol leftVal = emitExpression(term->data.binOp.a);
+			declf("jnz ");
+			write_sym(leftVal);
+			declf(", " LABELF ", " LABELF "\n", bLabel, falseLabel);
+			inst(LABELF, bLabel);
+			Symbol rightVal = emitExpression(term->data.binOp.b);
+			declf("jnz ");
+			write_sym(rightVal);
+			declf(", " LABELF ", " LABELF "\n", rightVal, trueLabel, falseLabel);
+			inst(LABELF, falseLabel);
+			inst(TEMPF " =w copy 0", result);
+			inst("jmp " LABELF, endLabel);
+			inst(LABELF, trueLabel);
+			inst(TEMPF " =w copy 1", result);
+			inst(LABELF, endLabel);
 		} else if (term->data.binOp.kind == OR)
 		{
 			u64 bLabel = newLabel();
@@ -180,99 +405,110 @@ u64 emitExpression(Term* term)
 			u64 trueLabel = newLabel();
 			u64 endLabel = newLabel();
 
-			u64 leftVal = emitExpression(term->data.binOp.a);
-			inst("jnz " TEMP ", " LABEL ", " LABEL, leftVal, trueLabel, bLabel);
-			inst(LABEL, bLabel);
-			u64 rightVal = emitExpression(term->data.binOp.b);
-			inst("jnz " TEMP ", " LABEL ", " LABEL, rightVal, trueLabel, falseLabel);
-			inst(LABEL, falseLabel);
-			inst(TEMP " =w copy 0", result);
-			inst("jmp " LABEL, endLabel);
-			inst(LABEL, trueLabel);
-			inst(TEMP " =w copy 1", result);
-			inst(LABEL, endLabel);
+			Symbol leftVal = emitExpression(term->data.binOp.a);
+			declf("jnz ");
+			write_sym(leftVal);
+			declf(", " LABELF ", " LABELF "\n", trueLabel, bLabel);
+			inst(LABELF, bLabel);
+			Symbol rightVal = emitExpression(term->data.binOp.b);
+			declf("jnz ");
+			write_sym(rightVal);
+			declf(", " LABELF ", " LABELF "\n", rightVal, trueLabel, falseLabel);
+			inst(LABELF, falseLabel);
+			write_localsym(result);
+			declf(" =w copy 0\n");
+			inst("jmp " LABELF, endLabel);
+			inst(LABELF, trueLabel);
+			write_localsym(result);
+			declf(" =w copy 1\n");
+			inst(LABELF, endLabel);
 		} else
 		{
-			u64 left = emitExpression(term->data.binOp.a);
-			u64 right = emitExpression(term->data.binOp.b);
+			Symbol left = emitExpression(term->data.binOp.a);
+			Symbol right = emitExpression(term->data.binOp.b);
 			indent();
-			fprintf(out, TEMP " =w ", result);
+			write_localsym(result);
+			declf(TEMPF " =w ", result);
 			bool sign = isSignedType(term->data.binOp.a->type);
 			bool dot = isFloatType(term->data.binOp.a->type);
 			switch (term->data.binOp.kind)
 			{
 			case ADD:
-				fprintf(out, "add");
+				declf("add");
 				break;
 			case SUBTRACT:
-				fprintf(out, "sub");
+				declf("sub");
 				break;
 			case MULTIPLY:
-				fprintf(out, "mul");
+				declf("mul");
 				break;
 			case DIVIDE:
 				if (sign)
-					fprintf(out, "div");
+					declf("div");
 				else
-					fprintf(out, "udiv");
+					declf("udiv");
 				break;
 			case REMAINDER:
 				if (sign)
-					fprintf(out, "rem");
+					declf("rem");
 				else
-					fprintf(out, "urem");
+					declf("urem");
 				break;
 
 			case EQUAL:
-				fprintf(out, "eq");
+				declf("eq");
 				break;
 			case NOT_EQUAL:
-				fprintf(out, "ne");
+				declf("ne");
 				break;
 
 			case LESS_THAN:
 				if (sign)
-					fprintf(out, "slt");
+					declf("slt");
 				else if (dot)
-					fprintf(out, "lt");
+					declf("lt");
 				else
-					fprintf(out, "ult");
+					declf("ult");
 				break;
 			case LESS_OR_EQUAL:
 				if (sign)
-					fprintf(out, "sle");
+					declf("sle");
 				else if (dot)
-					fprintf(out, "le");
+					declf("le");
 				else
-					fprintf(out, "ule");
+					declf("ule");
 				break;
 			case GREATER_THAN:
 				if (sign)
-					fprintf(out, "sgt");
+					declf("sgt");
 				else if (dot)
-					fprintf(out, "gt");
+					declf("gt");
 				else
-					fprintf(out, "ugt");
+					declf("ugt");
 				break;
 			case GREATER_OR_EQUAL:
 				if (sign)
-					fprintf(out, "sge");
+					declf("sge");
 				else if (dot)
-					fprintf(out, "ge");
+					declf("ge");
 				else
-					fprintf(out, "uge");
+					declf("uge");
 				break;
 			default:
 				logFatal("Unreachable.");
 				break;
 			}
-			fprintf(out, TEMP ", " TEMP "\n", left, right);
+			declf(" ");
+			write_sym(left);
+			declf(", ");
+			write_sym(right);
+			declf("\n");
 		}
 		break;
 
 	case APPLICATION:
-		result = newTemp();
-		u64* args = calloc(term->data.app._argCount, sizeof(u64));
+		result = newLocal();
+		Symbol* args = calloc(term->data.app._argCount, sizeof(Symbol));
 		if (args == NULL)
 		{
 			logFatal("Could not allocate enough memory for emitter.");
@@ -282,21 +518,37 @@ u64 emitExpression(Term* term)
 			args[i] = emitExpression(&term->data.app.args[i]);
 		}
 		string name = toString(&term->data.app.fun->data.var.name);
-		indent();
-		fprintf(out, "call $%.*s (", (int)name.length, name.chars);
+		if (!isUnitType(term->type))
+		{
+			indent();
+			write_localsym(result);
+			declf(" =");
+			write_typesym(convertType(term->type));
+			declf(" ");
+		} else
+		{
+			indent();
+		}
+		declf("call $%.*s (", (int)name.length, name.chars);
 		for (size i = 0; i < term->data.app._argCount; i++)
 		{
-			fprintf(out, "%s " TEMP, typeToQbe(term->data.app.args[i].type), args[i]);
+			Type* type = term->data.app.args[i].type;
+			if (isUnitType(type))
+			{
+				continue;
+			}
+			write_typesym(convertType(type));
+			declf(" ");
+			write_sym(args[i]);
 			if (i + 1 < term->data.app._argCount)
 			{
-				fprintf(out, ", ");
+				declf(", ");
 			}
 		}
-		fprintf(out, ")\n");
+		declf(")\n");
 		break;
 		
 	case BLOCK:
-		result = newTemp();
 		for (size i = 0; i < term->data.block._stmtCount; i++)
 		{
 			Statement stmt = term->data.block.stmts[i];
@@ -305,18 +557,20 @@ u64 emitExpression(Term* term)
 				emitExpression(stmt.data.unit_expression);
 			} else
 			{
-				logFatal("TODO: handle variable declarations.");
+				emitDeclaration(&stmt.data.declaration);
 			}
 		}
 		if (term->data.block.exp != NULL)
 		{
-			result = emitExpression(term->data.block.exp);
+			Symbol sym = emitExpression(term->data.block.exp);
+			if (!isUnitType(term->data.block.exp->type))
+			{
+				result = sym;
+			}
 		}
 		break;
 
-	// case BOOLEAN:
 	// case ARRAY:
-	// case STRUCTURE:
 	// case STRING:
 	// case VAR:
 	// case REF:
@@ -340,7 +594,7 @@ u64 emitExpression(Term* term)
 	return result;
 }
 
-void emitDeclaration(DeclarationData* decl)
+void emitGlobalDeclaration(DeclarationData* decl)
 {
 	if (decl->exp == NULL)
 	{
@@ -348,32 +602,61 @@ void emitDeclaration(DeclarationData* decl)
 	}
 	if (decl->exp->kind == FUNCTION)
 	{
+		Type* type = decl->type->data.fun.retType;
+		bool proper = !isUnitType(type);
 		if (decl->name.isAuto)
 		{
-			fprintf(out, "function w $auto_%llu ()\n", decl->name.data.intData);
+			declf("function ");
+			if (proper)
+			{
+				write_typesym(convertType(type));
+				declf(" ");
+			}
+			declf(" $auto_%llu ()\n", decl->name.data.intData);
 		}
 		else
 		{
 			string name = toString(&decl->name);
-			fprintf(out, "export function w $%.*s ()\n", (int)name.length, name.chars);
+			declf("export function ");
+			if (proper)
+			{
+				write_typesym(convertType(type));
+				declf(" ");
+			}
+			declf("$%.*s ()\n", (int)name.length, name.chars);
 		}
-		fprintf(out, "{\n");
+		declf("{\n");
 		down();
-		fprintf(out, "    @start\n");
-		u64 id = emitExpression(decl->exp->data.fun.body);
-		fprintf(out, "    @return\n");
-		fprintf(out, "    ret " TEMP "\n", id);
+		declf("    @start\n");
+		Symbol sym = emitExpression(decl->exp->data.fun.body);
+		
+		declf("    @return\n");
+		if (proper)
+		{
+			declf("    ret ");
+			write_sym(sym);
+			declf("\n");
+		} else
+		{
+			declf("    ret\n");
+		}
+		
 		up();
-		fprintf(out, "}\n");
+		declf("}\n");
 	}
 }
 
-void emitProgram(Program* program)
+void emitProgram(Program* program, u64 maxId)
 {
+	maxLocal = maxId;
+	
 	for (size i = 0; i < program->_declCount; i++)
 	{
-		emitDeclaration(&program->decls[i]);
+		emitGlobalDeclaration(&program->decls[i]);
 	}
+	bufferPrint(stdout, &typeBuffer);
+	bufferPrint(stdout, &globalBuffer);
+	bufferPrint(stdout, &declBuffer);
 }
 
 #endif
