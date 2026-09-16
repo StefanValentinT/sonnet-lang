@@ -4,7 +4,6 @@
 
 Sonnet ought to be beautiful in its simplicity, pristine in its architecture, bright-shining as the ivory tower, with a long spiral staircase winding its way all the way to the top, twisting round and round the tower. Sonnet shall be there for everyone, shall be easy to use because of its simplictly, but limitless in its reach. Sonnet shall bring back the simple, arcane joy of programming.
 
-
 Therefore, the specification is written in a way to facilitate both unambiguity and accessibility for everyone. Whenever these goals conflicted, it was opted to add important information using a #smallcaps("Note"), or, where needed, to provide additional reiteration or exemplification marked with an #smallcaps("Example"), whilst not compromising the precise actual specification. Both shall be regarded as non-authoritative for the meaning of the authorative text and may only aid in its understanding.
 
 == Scope
