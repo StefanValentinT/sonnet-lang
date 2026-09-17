@@ -7,6 +7,9 @@ fun get_unit() {
 fun main() {
 	val unit = get_unit();
 	print_i32(10);
+	var a = 10;
+	a = 15;
+	print_i32(a);
 	return unit;
 }
 

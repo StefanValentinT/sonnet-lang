@@ -767,7 +767,7 @@ Term parsePostfix(void)
 				logFatal("Can only instantiate a type with a known specifier.");
 			}
 			string string = toString(&post.data.var.name);
-			Type* type = (Type*)mapGet(&typeDefinitions, string.chars, string.length);
+			Type* type = (Type*)mapGet(&typeDefinitions, string.chars, string.len);
 			if (type == NULL)
 			{
 				logFatal("Type not defined, but used in line %d.", post.info.line);

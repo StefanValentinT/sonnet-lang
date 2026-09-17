@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "lexer.c"
 #include "log.c"
@@ -66,18 +67,34 @@ char* readFile(char* path)
 	return buffer;
 }
 
+char* inputPath = NULL;
+char* outputPath = NULL;
+
 int main(int argc, char** argv)
 {
 	testPlatform();
 
-	if (argc != 2)
+	for (int i = 1; i < argc; i++)
 	{
-		logFatal("%s may be invoked with one argument, but got %d\n", argv[0], argc);
+		if (strcmp(argv[i], "-o") == 0 && outputPath == NULL)
+		{
+			outputPath = argv[i+1];
+			i++;
+		} else
+		{
+			inputPath = argv[i];
+		}
 	}
-	char* fileName = argv[1];
-	printfn("Compiling %s.", fileName);
 
-	char* source = readFile(fileName);
+	system("mkdir ./out");
+	char qbePath[256];
+	snprintf(qbePath, sizeof(qbePath), "./out/%s.qbe", outputPath);
+	char asmPath[256];
+	snprintf(asmPath, sizeof(asmPath), "./out/%s.s", outputPath);
+
+	printfn("Compiling %s -> %s.", inputPath, outputPath);
+
+	char* source = readFile(inputPath);
 	Program ast = parse(source);
 	u64 maxId = getMaxId();
 	printProgram(&ast);
@@ -85,7 +102,13 @@ int main(int argc, char** argv)
 	printf("--- Typed AST ---\n");
 	printProgram(&ast);
 	printf("--- Emitting ----\n");
-	emitProgram(&ast, maxId);
+	emitProgram(&ast, qbePath, maxId);
+
+	char cmd[512];
+	snprintf(cmd, sizeof(cmd), "qbe %s > %s", qbePath, asmPath);
+	system(cmd);
+	snprintf(cmd, sizeof(cmd), "gcc %s print.c -o %s", asmPath, outputPath);
+	system(cmd);
 
 	free(source);
 

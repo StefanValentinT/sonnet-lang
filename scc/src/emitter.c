@@ -4,7 +4,7 @@
 
 #include "syntax.c"
 
-void emitProgram(Program* program, u64 maxId);
+void emitProgram(Program* program, char* out_path, u64 maxId);
 
 #if __INCLUDE_LEVEL__ == 0
 
@@ -274,16 +274,20 @@ Symbol convertType(const Type* t)
 
 Symbol emitExpression(Term* term);
 
-void emitDeclaration(DeclarationData* decl)
+void emitDeclaration(const identifier* name, Term* exp)
 {
-	Type* type = decl->exp->type;
+	Type* type = exp->type;
+	Symbol sym = emitExpression(exp);
 	if (!isUnitType(type))
 	{
-		write_sym(idToSymbol(&decl->name));
-		declf(" =" TYPEF " ", convertType(type));
+		indent();
+		write_sym(idToSymbol(name));
+		declf(" =");
+		write_typesym(convertType(type));
+		declf(" copy ");
+		write_sym(sym);
+		declf("\n");
 	}
-	emitExpression(decl->exp);
-	declf("\n");
 }
 
 Symbol emitExpression(Term* term)
@@ -297,7 +301,10 @@ Symbol emitExpression(Term* term)
 			inst("ret\n");
 		} else
 		{
-			inst("ret " TEMPF "\n",  emitExpression(term->data.retur.exp));
+ 			result = emitExpression(term->data.retur.exp);
+ 			declf("ret ");
+ 			write_typesym(result);
+ 			declf("\n");
 		}
 		break;
 
@@ -506,6 +513,13 @@ Symbol emitExpression(Term* term)
 		}
 		break;
 
+	case ASSIGNMENT:
+		if (term->data.assignment.lvalue->kind == VAR)
+		{
+			emitDeclaration(&term->data.assignment.lvalue->data.var.name, term->data.assignment.value);
+		}
+		break;
+
 	case APPLICATION:
 		result = newLocal();
 		Symbol* args = calloc(term->data.app._argCount, sizeof(Symbol));
@@ -529,7 +543,7 @@ Symbol emitExpression(Term* term)
 		{
 			indent();
 		}
-		declf("call $%.*s (", (int)name.length, name.chars);
+		declf("call $%.*s (", (int)name.len, name.chars);
 		for (size i = 0; i < term->data.app._argCount; i++)
 		{
 			Type* type = term->data.app.args[i].type;
@@ -557,7 +571,7 @@ Symbol emitExpression(Term* term)
 				emitExpression(stmt.data.unit_expression);
 			} else
 			{
-				emitDeclaration(&stmt.data.declaration);
+				emitDeclaration(&stmt.data.declaration.name, stmt.data.declaration.exp);
 			}
 		}
 		if (term->data.block.exp != NULL)
@@ -586,7 +600,6 @@ Symbol emitExpression(Term* term)
 	// case CONDITIONAL:
 	// case LOOP:
 	// case FUNCTION:
-	// case ASSIGNMENT:
 	// 	break;
 	default:
 		logFatal("Emitting of term kind %s not yet implemented.", termKindToString(term->kind));
@@ -623,7 +636,7 @@ void emitGlobalDeclaration(DeclarationData* decl)
 				write_typesym(convertType(type));
 				declf(" ");
 			}
-			declf("$%.*s ()\n", (int)name.length, name.chars);
+			declf("$%.*s ()\n", (int)name.len, name.chars);
 		}
 		declf("{\n");
 		down();
@@ -646,7 +659,7 @@ void emitGlobalDeclaration(DeclarationData* decl)
 	}
 }
 
-void emitProgram(Program* program, u64 maxId)
+void emitProgram(Program* program, char* path, u64 maxId)
 {
 	maxLocal = maxId;
 	
@@ -654,9 +667,24 @@ void emitProgram(Program* program, u64 maxId)
 	{
 		emitGlobalDeclaration(&program->decls[i]);
 	}
-	bufferPrint(stdout, &typeBuffer);
-	bufferPrint(stdout, &globalBuffer);
-	bufferPrint(stdout, &declBuffer);
+
+	if (path != NULL)
+	{
+		FILE* file = fopen(path, "w");
+		if (file == NULL)
+		{
+			logFatal("Could not open file %s.", path);
+		}
+		bufferPrint(file, &typeBuffer);
+		bufferPrint(file, &globalBuffer);
+		bufferPrint(file, &declBuffer);
+		fclose(file);
+	} else
+	{
+		bufferPrint(stdout, &typeBuffer);
+		bufferPrint(stdout, &globalBuffer);
+		bufferPrint(stdout, &declBuffer);
+	}
 }
 
 #endif

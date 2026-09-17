@@ -613,7 +613,14 @@ Type* typeTerm(Term* term)
 		break;
 
 	// case LOOP:
-	// case ASSIGNMENT:
+
+	case ASSIGNMENT: {}
+		Type* valType = typeTerm(term->data.assignment.value);
+		Type* lType = typeTerm(term->data.assignment.lvalue);
+		constrainTypes(lType, valType);
+		result = newType(unitType);
+		break;
+		
 	case BLOCK:
 		for (size i = 0; i < term->data.block._stmtCount; i++)
 		{

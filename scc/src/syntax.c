@@ -31,12 +31,6 @@ typedef struct
 	} data;
 } identifier;
 
-typedef struct
-{
-	const char* chars;
-	size length;
-} string;
-
 identifier newIdent(void);
 u64 getMaxId(void);
 identifier makeIdent(const char* content, size length);
