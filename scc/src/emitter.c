@@ -17,12 +17,11 @@ void emitProgram(Program* program, char* out_path, u64 maxId);
 
 #include "log.c"
 
-// TODO: How to handle it, if this were to literally be the name of a variable?
-#define TEMPF "%%__temp__%llu"
-#define LABELF "@__label__%llu"
-#define TYPEF ":__struct__%llu"
+#define TEMPF "%%temp_%llu"
+#define LABELF "@label_%llu"
+#define TYPEF ":struct_%llu"
 #define TYPEF_LEN 11
-#define GLOBALF "$__global__%llu"
+#define GLOBALF "$global_%llu"
 
 typedef struct
 {
@@ -164,7 +163,7 @@ void write_globalsym(Symbol sym)
 		declf(GLOBALF, sym.as.id);
 	} else
 	{
-		declf("$%.*s", (int)sym.as.string.len, sym.as.string.chars);
+		declf("$var_%.*s", (int)sym.as.string.len, sym.as.string.chars);
 	}
 }
 void write_localsym(Symbol sym)
@@ -174,7 +173,7 @@ void write_localsym(Symbol sym)
 		declf(TEMPF, sym.as.id);
 	} else
 	{
-		declf("%%%.*s", (int)sym.as.string.len, sym.as.string.chars);
+		declf("%%var_%.*s", (int)sym.as.string.len, sym.as.string.chars);
 	}
 }
 void write_typesym(Symbol sym)
@@ -189,7 +188,7 @@ void write_typesym(Symbol sym)
 			declf("%.*s", (int)sym.as.type_string.len, sym.as.type_string.chars);
 		} else
 		{
-			declf(":%.*s", (int)sym.as.type_string.len, sym.as.type_string.chars);
+			declf(":type_%.*s", (int)sym.as.type_string.len, sym.as.type_string.chars);
 		}
 	}
 }
@@ -380,6 +379,10 @@ Symbol emitExpression(Term* term)
 		result = idToSymbol(&term->data.var.name);
 		break;
 		
+	case FUNCTION:
+		logFatal("All anonymous functions are already lifted.");
+		break;
+		
 	case BINARY_OP:
 		result = newLocal();
 
@@ -513,6 +516,13 @@ Symbol emitExpression(Term* term)
 		}
 		break;
 
+	case LOOP: {}
+		u64 bodyLabel = newLabel();
+		u64 breakLabel = newLabel();
+		inst(LABELF, bodyLabel);
+		Symbol condSym = emitExpression(term->data.loop.cond);
+		declf("jnz ");
+
 	case ASSIGNMENT:
 		if (term->data.assignment.lvalue->kind == VAR)
 		{
@@ -586,7 +596,6 @@ Symbol emitExpression(Term* term)
 
 	// case ARRAY:
 	// case STRING:
-	// case VAR:
 	// case REF:
 	// case DEREF:
 	// case CAST:
@@ -598,8 +607,6 @@ Symbol emitExpression(Term* term)
 	// case SUBSCRIPT:
 	// case ACCESS:
 	// case CONDITIONAL:
-	// case LOOP:
-	// case FUNCTION:
 	// 	break;
 	default:
 		logFatal("Emitting of term kind %s not yet implemented.", termKindToString(term->kind));
